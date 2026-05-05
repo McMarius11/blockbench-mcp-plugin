@@ -97,11 +97,19 @@ export const selectMeshElementsParameters = z.object({
       ])
     )
     .optional()
-    .describe("Specific elements to select. If not provided, selects all."),
+    .describe(
+      "Specific elements to select. If not provided AND `topology` is unset, selects all elements of the mode."
+    ),
   action: selectionActionEnum
     .default("select")
     .describe(
       "Selection action: select (replace), add, remove, or toggle."
+    ),
+  topology: z
+    .enum(["connected", "boundary", "inverse"])
+    .optional()
+    .describe(
+      "Topology-derived face selection (face mode only). 'connected' = BFS through shared-edge adjacency from current selection (or from `elements` if provided as seeds). 'boundary' = faces with at least one edge unique to them (open mesh borders). 'inverse' = all faces NOT currently selected. When set, `elements` is treated as the seed set for 'connected' and ignored for 'boundary' / 'inverse'."
     ),
 });
 
@@ -599,7 +607,7 @@ export function registerMeshTools() {
 
   createTool(meshToolDocs[4].name, {
     ...meshToolDocs[4],
-    async execute({ mesh_id, mode, elements, action }) {
+    async execute({ mesh_id, mode, elements, action, topology }) {
       const mesh = findMeshOrThrow(mesh_id);
 
       Undo.initEdit({
@@ -621,6 +629,126 @@ export function registerMeshTools() {
         edges: unknown[];
         faces: string[];
       };
+
+      // ---- Topology-derived face selection ---------------------------------
+      // When `topology` is set, derive the resulting face set from the mesh's
+      // current selection (and optionally `elements` as a seed for 'connected'),
+      // then short-circuit the rest of the selection logic.
+      if (topology) {
+        if (mode !== "face") {
+          throw new Error(
+            `topology selection ('${topology}') is only supported in face mode (got mode='${mode}').`
+          );
+        }
+
+        const allFaceKeys = Object.keys(mesh.faces);
+        const currentSelectedFaces = new Set(selection.faces);
+
+        // Build edge → face[] adjacency map (key: "min-max" of vkeys).
+        const edgeKey = (a: string, b: string) =>
+          a < b ? `${a}-${b}` : `${b}-${a}`;
+        const edgeToFaces = new Map<string, string[]>();
+        for (const fkey of allFaceKeys) {
+          const face = mesh.faces[fkey];
+          for (const [a, b] of face.getEdges() as unknown as [string, string][]) {
+            const k = edgeKey(a, b);
+            if (!edgeToFaces.has(k)) edgeToFaces.set(k, []);
+            edgeToFaces.get(k)!.push(fkey);
+          }
+        }
+
+        let resultFaces: string[] = [];
+
+        if (topology === "inverse") {
+          resultFaces = allFaceKeys.filter(
+            (k) => !currentSelectedFaces.has(k)
+          );
+        } else if (topology === "boundary") {
+          for (const fkey of allFaceKeys) {
+            const face = mesh.faces[fkey];
+            for (const [a, b] of face.getEdges() as unknown as [
+              string,
+              string
+            ][]) {
+              const sharing = edgeToFaces.get(edgeKey(a, b)) ?? [];
+              if (sharing.length < 2) {
+                resultFaces.push(fkey);
+                break;
+              }
+            }
+          }
+        } else if (topology === "connected") {
+          // BFS through shared-edge adjacency. Seed = `elements` if provided,
+          // else current selection.
+          const seedKeys =
+            elements && elements.length > 0
+              ? elements
+                  .map((e) => String(e))
+                  .filter((k) => mesh.faces[k])
+              : Array.from(currentSelectedFaces);
+          if (seedKeys.length === 0) {
+            throw new Error(
+              "topology='connected' needs either explicit `elements` as seeds or a non-empty current face selection."
+            );
+          }
+          const visited = new Set<string>(seedKeys);
+          const queue = [...seedKeys];
+          while (queue.length > 0) {
+            const cur = queue.shift()!;
+            const face = mesh.faces[cur];
+            if (!face) continue;
+            for (const [a, b] of face.getEdges() as unknown as [
+              string,
+              string
+            ][]) {
+              const neighbours = edgeToFaces.get(edgeKey(a, b)) ?? [];
+              for (const n of neighbours) {
+                if (n !== cur && !visited.has(n)) {
+                  visited.add(n);
+                  queue.push(n);
+                }
+              }
+            }
+          }
+          resultFaces = Array.from(visited);
+        }
+
+        // Apply the derived set respecting `action` semantics.
+        if (action === "select") {
+          selection.faces = resultFaces;
+        } else if (action === "add") {
+          const merged = new Set(selection.faces);
+          for (const k of resultFaces) merged.add(k);
+          selection.faces = Array.from(merged);
+        } else if (action === "remove") {
+          const drop = new Set(resultFaces);
+          selection.faces = selection.faces.filter((k) => !drop.has(k));
+        } else if (action === "toggle") {
+          const flip = new Set(resultFaces);
+          const merged = new Set(selection.faces);
+          for (const k of flip) {
+            if (merged.has(k)) merged.delete(k);
+            else merged.add(k);
+          }
+          selection.faces = Array.from(merged);
+        }
+
+        mesh.select();
+        Canvas.updateView({ elements: [mesh], selection: true });
+        Undo.finishEdit("Topology select mesh faces");
+
+        return JSON.stringify({
+          mesh: mesh.name,
+          mode,
+          topology,
+          selected: {
+            vertices: selection.vertices.length,
+            edges: selection.edges.length,
+            faces: selection.faces.length,
+          },
+        });
+      }
+      // ---- end topology branch --------------------------------------------
 
       if (action === "select") {
         // Clear existing selection

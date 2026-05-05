@@ -240,14 +240,14 @@ export const silentToolDocs: ToolSpec[] = [
   {
     name: "install_plugin_from_path",
     description:
-      "Install or replace a Blockbench plugin from a local .js file with source='file'. Survives restarts (unlike URL-source which auto-redownloads). Use to hot-swap fork builds without UI clicks: after `bun run build`, call this with the dist/mcp.js path. CAVEAT: replacing the running MCP plugin causes a brief MCP server disconnect (~1-2s) — reconnect via /mcp afterwards.",
+      "Install or replace a Blockbench plugin from a local .js file with source='file'. Survives restarts (unlike URL-source which auto-redownloads). Use to hot-swap fork builds without UI clicks: after `bun run build`, call this with the dist/mcp.js path. CAVEAT: replacing the running MCP plugin causes a brief MCP server disconnect (~200 ms-1 s) — reconnect via /mcp afterwards.",
     annotations: {
       title: "Install Plugin From Path",
       destructiveHint: true,
       openWorldHint: false,
     },
     parameters: installPluginFromPathParameters,
-    status: STATUS_EXPERIMENTAL,
+    status: STATUS_STABLE,
   },
 ];
 

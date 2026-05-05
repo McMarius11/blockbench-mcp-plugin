@@ -8,6 +8,12 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ## [unreleased] — 2026-05-05
 
+### Changed
+
+- `select_mesh_elements` gained a `topology` parameter (face mode only): `connected` (BFS through shared-edge adjacency from current selection or `elements` seeds), `boundary` (faces with at least one unshared edge — open mesh borders), `inverse` (all faces NOT currently selected). Closes the last gap-analysis "Consider"-tier item that had real pipeline value (mesh cleanup workflow, finding open seams). Verified on closed sphere (boundary=0) and open quad (boundary=1).
+- `install_plugin_from_path` promoted from EXPERIMENTAL to STABLE — has been the daily hot-swap mechanism for fork builds, no failures observed.
+- `modify_cube` and `modify_cube_uv` descriptions sharpened to make the split clear: `modify_cube` = geometry + box-UV (whole-cube), `modify_cube_uv` = per-face UV / rotation / texture / tint / enabled. Helps future agents pick the right tool on first try.
+
 ### Fixed
 
 - `place_mesh` now actually creates faces. The `meshSchema` in `lib/zodObjects.ts` exposed `vertices` but had no `faces` field; the `place_mesh` execute called `mesh.addVertices(...)` per vertex but never `mesh.addFaces(...)`, so every created mesh had loose vertices and no surface (rendered as nothing). Schema now accepts `faces: [{ vertices: [int], uv?: { "<idx>": [u,v] } }]` referencing vertices by 0-based index; execute resolves indices to vkeys via the `addVertices` return value and calls `mesh.addFaces(new MeshFace(mesh, {...}))` per face. Return message now includes `(N verts, M faces)` for verification.

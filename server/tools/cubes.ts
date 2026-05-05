@@ -163,7 +163,7 @@ export const cubeToolDocs: ToolSpec[] = [
   {
     name: "modify_cube",
     description:
-      "Modifies the cube with the given ID. Auto UV setting: saved as an integer, where 0 means disabled, 1 means enabled, and 2 means relative auto UV (cube position affects UV)",
+      "Modify GEOMETRY-LEVEL properties of an existing cube: position (`from`/`to`), `origin` (pivot), `rotation`, `name`, `inflate`, `color`, `visibility`, `shade`, plus the WHOLE-CUBE box-UV controls (`autouv` 0/1/2, `uv_offset`, `mirror_uv`). Does NOT edit per-face UVs — for per-face UV / face texture / face rotation / face tint use `modify_cube_uv` instead.",
     annotations: {
       title: "Modify Cube",
       destructiveHint: true,
@@ -174,7 +174,7 @@ export const cubeToolDocs: ToolSpec[] = [
   {
     name: "modify_cube_uv",
     description:
-      "Edit per-face UV / rotation / texture / tint on an existing cube. Complements `place_cube` (which only accepts face UVs at creation time) and `modify_cube` (which exposes only box-UV / autouv / uv_offset). UV coordinates are in the project's pixel space (texture_width × texture_height) — match `set_project_resolution`. For tile-kit / atlas-packed cube models.",
+      "Edit PER-FACE properties on an existing cube — face UV rectangle `[u1,v1,u2,v2]`, face rotation (0/90/180/270), face texture binding, face tint, face enabled/disabled. UV coordinates are in the project's pixel space (texture_width × texture_height — match `set_project_resolution`). Complements `place_cube` (which only accepts face UVs at creation time) and `modify_cube` (which controls geometry + box-UV but NOT per-face UV). For tile-kit / atlas-packed cube models or post-hoc UV tweaks.",
     annotations: {
       title: "Modify Cube Face UV",
       destructiveHint: true,
