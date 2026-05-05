@@ -356,13 +356,18 @@ export function registerSilentTools() {
           animations: !!animations,
         };
 
-        const content =
+        let content =
           typeof codec.compile === "function"
             ? codec.compile(options)
             : null;
 
         if (content === null || content === undefined) {
           throw new Error("glTF compile returned no content.");
+        }
+
+        // In modern Blockbench (5.x+) `codec.compile` may be async and return a Promise.
+        if (content && typeof (content as any).then === "function") {
+          content = await content;
         }
 
         // GLB is binary (Buffer); GLTF is JSON string
