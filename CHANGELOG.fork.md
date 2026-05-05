@@ -76,4 +76,12 @@ CHANGELOG.fork.md               (this file)
 
 ### Sync history
 
-Initial fork branch created from upstream `main` at commit `<upstream-sha>` on 2026-05-05. No upstream rebases yet.
+Initial fork branch created from upstream `main` at commit [`afb30be`](https://github.com/jasonjgardner/blockbench-mcp-plugin/commit/afb30be) ("Merge pull request #36 from jasonjgardner/jasonjgardner-patch-1", 2026-02-22) on 2026-05-05. As of this entry, this is also `upstream/main` HEAD — no upstream rebases needed yet.
+
+To check whether we've fallen behind upstream:
+
+```bash
+git fetch upstream
+git log --oneline upstream/main..mcmarius/extensions   # our commits not yet upstreamed
+git log --oneline mcmarius/extensions..upstream/main   # upstream commits we'd need to rebase onto
+```
