@@ -109,7 +109,7 @@ export const selectMeshElementsParameters = z.object({
     .enum(["connected", "boundary", "inverse"])
     .optional()
     .describe(
-      "Topology-derived face selection (face mode only). 'connected' = BFS through shared-edge adjacency from current selection (or from `elements` if provided as seeds). 'boundary' = faces with at least one edge unique to them (open mesh borders). 'inverse' = all faces NOT currently selected. When set, `elements` is treated as the seed set for 'connected' and ignored for 'boundary' / 'inverse'."
+      "Topology-derived face selection (face mode only). 'connected' = BFS through shared-edge adjacency from `elements` seeds (REQUIRED — Blockbench wipes mesh selection between separate MCP requests, so an implicit current-selection seed is unreliable; pass at least one face key in `elements`). 'boundary' = faces with at least one edge unique to them (open mesh borders) — does NOT depend on current selection. 'inverse' = all faces NOT currently selected (note: cross-request selection wipe means inverse usually returns 'all faces' unless invoked in a call that selects faces first via the same request — which the current API doesn't combine). For reliable connected-island BFS use `elements` as explicit seeds."
     ),
 });
 
@@ -644,21 +644,40 @@ export function registerMeshTools() {
       // @ts-expect-error Selection mode setter available at runtime
       BarItems.selection_mode.set(mode);
 
-      // Ensure Project.mesh_selection[mesh.uuid] exists and that `selection`
-      // is a live reference into it. The previous pattern used `?? {...}`
-      // which silently created a NEW local object when the entry didn't
-      // exist — writes never landed in Project state, so subsequent reads
-      // saw an empty selection. (Bug surfaced in topology selection where
-      // 'connected' couldn't see seeds left by a prior call.)
-      // @ts-ignore - Project is a Blockbench global
-      const meshSel = Project!.mesh_selection;
-      if (!meshSel[mesh.uuid]) {
-        meshSel[mesh.uuid] = { vertices: [], edges: [], faces: [] };
-      }
-      const selection = meshSel[mesh.uuid] as {
+      // Use Blockbench's official selection getters with can_write=true to
+      // get LIVE writable references BEFORE calling mesh.select(). Calling
+      // mesh.select() first would replace the outliner selection and may
+      // wipe per-mesh selection in the process. We snapshot the live
+      // arrays first so any prior selection (set in a prior MCP call's
+      // execution) survives — though note that Blockbench appears to wipe
+      // mesh_selection between separate MCP requests anyway, see
+      // README/CHANGELOG limitation note.
+      const selection = {
+        vertices:
+          typeof (mesh as any).getSelectedVertices === "function"
+            ? (mesh as any).getSelectedVertices(true)
+            : [],
+        edges:
+          typeof (mesh as any).getSelectedEdges === "function"
+            ? (mesh as any).getSelectedEdges(true)
+            : [],
+        faces:
+          typeof (mesh as any).getSelectedFaces === "function"
+            ? (mesh as any).getSelectedFaces(true)
+            : [],
+      } as {
         vertices: string[];
         edges: unknown[];
         faces: string[];
+      };
+
+      // CRITICAL: getSelected*(true) returns Blockbench's INTERNAL array
+      // by reference. Reassigning (`selection.faces = [...]`) replaces our
+      // local pointer but leaves Blockbench's array untouched. Always
+      // mutate in place via setArr() below.
+      const setArr = <T>(arr: T[], items: T[]) => {
+        arr.length = 0;
+        for (const it of items) arr.push(it);
       };
 
       // ---- Topology-derived face selection ---------------------------------
@@ -744,16 +763,20 @@ export function registerMeshTools() {
           resultFaces = Array.from(visited);
         }
 
-        // Apply the derived set respecting `action` semantics.
+        // Apply the derived set respecting `action` semantics. In-place
+        // mutation per setArr() — see warning above.
         if (action === "select") {
-          selection.faces = resultFaces;
+          setArr(selection.faces, resultFaces);
         } else if (action === "add") {
           const merged = new Set(selection.faces);
           for (const k of resultFaces) merged.add(k);
-          selection.faces = Array.from(merged);
+          setArr(selection.faces, Array.from(merged));
         } else if (action === "remove") {
           const drop = new Set(resultFaces);
-          selection.faces = selection.faces.filter((k) => !drop.has(k));
+          setArr(
+            selection.faces,
+            selection.faces.filter((k) => !drop.has(k))
+          );
         } else if (action === "toggle") {
           const flip = new Set(resultFaces);
           const merged = new Set(selection.faces);
@@ -761,7 +784,7 @@ export function registerMeshTools() {
             if (merged.has(k)) merged.delete(k);
             else merged.add(k);
           }
-          selection.faces = Array.from(merged);
+          setArr(selection.faces, Array.from(merged));
         }
 
         mesh.select();
@@ -782,18 +805,18 @@ export function registerMeshTools() {
       // ---- end topology branch --------------------------------------------
 
       if (action === "select") {
-        // Clear existing selection
-        selection.vertices = [];
+        // Clear existing selection — in-place per setArr() warning above.
+        selection.vertices.length = 0;
         selection.edges.length = 0;
-        selection.faces = [];
+        selection.faces.length = 0;
       }
 
       if (!elements || elements.length === 0) {
         // Select all elements of the specified type
         if (mode === "vertex") {
-          selection.vertices = Object.keys(mesh.vertices);
+          setArr(selection.vertices, Object.keys(mesh.vertices));
         } else if (mode === "face") {
-          selection.faces = Object.keys(mesh.faces);
+          setArr(selection.faces, Object.keys(mesh.faces));
         } else if (mode === "edge") {
           // Collect all unique edges from faces
           const allEdges: [string, string][] = [];
@@ -823,10 +846,16 @@ export function registerMeshTools() {
                 selection.vertices.push(vkey);
               }
             } else if (action === "remove") {
-              selection.vertices = selection.vertices.filter((k) => k !== vkey);
+              setArr(
+                selection.vertices,
+                selection.vertices.filter((k) => k !== vkey)
+              );
             } else if (action === "toggle") {
               if (selection.vertices.includes(vkey)) {
-                selection.vertices = selection.vertices.filter((k) => k !== vkey);
+                setArr(
+                  selection.vertices,
+                  selection.vertices.filter((k) => k !== vkey)
+                );
               } else {
                 selection.vertices.push(vkey);
               }
@@ -838,10 +867,16 @@ export function registerMeshTools() {
                 selection.faces.push(fkey);
               }
             } else if (action === "remove") {
-              selection.faces = selection.faces.filter((k) => k !== fkey);
+              setArr(
+                selection.faces,
+                selection.faces.filter((k) => k !== fkey)
+              );
             } else if (action === "toggle") {
               if (selection.faces.includes(fkey)) {
-                selection.faces = selection.faces.filter((k) => k !== fkey);
+                setArr(
+                  selection.faces,
+                  selection.faces.filter((k) => k !== fkey)
+                );
               } else {
                 selection.faces.push(fkey);
               }
@@ -885,6 +920,8 @@ export function registerMeshTools() {
         });
       }
 
+      // Select mesh as outliner element AFTER finalizing the per-mesh
+      // selection arrays — calling select() before would wipe them.
       mesh.select();
       Canvas.updateView({
         elements: [mesh],
