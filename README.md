@@ -1,10 +1,28 @@
 # Blockbench MCP — McMarius11 fork
 
-Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner/blockbench-mcp-plugin) with **23 additional tools** that close gaps in the upstream MCP coverage. Built for AI-driven 3D asset pipelines (e.g. [`asset-generator-blockbench`](https://github.com/McMarius11/asset-generator-blockbench)).
+Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner/blockbench-mcp-plugin) with **30+ additional tools** that close gaps in the upstream MCP coverage. Built for AI-driven 3D asset pipelines (e.g. [`asset-generator-blockbench`](https://github.com/McMarius11/asset-generator-blockbench)).
 
 > Original upstream README is preserved at [`README.upstream.md`](./README.upstream.md). License (GPL-3.0-only) is unchanged.
 
-## What this fork adds
+## Quick reference — fork-only tools
+
+| Category | Tools |
+|---|---|
+| **File I/O (silent)** | `save_project_silent`, `export_gltf_silent`, `force_backup_now`, `open_project_file`, `export_texture_to_png`, `set_project_resolution`, `delete_texture`, `switch_to_tab`, `get_project_state` |
+| **Plugin lifecycle** | `install_plugin_from_path` |
+| **Outliner & attachment points** | `create_locator`, `create_null_object`, `add_reference_image` |
+| **Symmetry & pivots** | `mirror_elements`, `set_origin` |
+| **Cube editing** | `modify_cube_uv` |
+| **Mesh editing** | `flip_mesh_normals`, `inspect_mesh_geometry`, `mesh_bevel_edge`, `mesh_inset_face`, `mesh_loop_cut`, `select_mesh_elements` (extended with topology modes connected/boundary/inverse) |
+| **UV editing** | `uv_island_transform` |
+| **Animation** | `manage_animations` |
+| **Selection inspection** | `get_selection` |
+| **History** | `undo`, `redo` |
+| **Project I/O** | `convert_project` |
+| **Layout** | `align_elements`, `distribute_elements`, `set_group_visibility`, `lock_group` |
+| **Selection / settings** | `select_by_pattern`, `read_setting`, `write_setting` |
+
+## What this fork adds (detail)
 
 The upstream plugin exposes most of Blockbench's modeling/animation API — but a few common operations either trigger OS-native dialogs the agent can't auto-confirm (the `save_project` popup), or aren't reachable at all without `risky_eval`. This fork ships them as proper MCP tools.
 
@@ -12,13 +30,51 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 
 | Tool | Purpose |
 |---|---|
-| `save_project_silent(path, compressed?)` | Direct `.bbmodel` write, LZUTF8-compatible, updates `Project.save_path` |
+| `save_project_silent(path, compressed?)` | Direct `.bbmodel` write via `Codecs.project.compile()`, updates `Project.save_path`. Default writes plain JSON (modern Blockbench 5.x format); opt in to legacy LZUTF8 with `compressed: true` |
 | `export_gltf_silent(path, embed_textures?, animations?)` | Direct `.glb`/`.gltf` write, no dialog |
+| `open_project_file(path)` | Load existing `.bbmodel` from disk into the running instance — handles both `<lz>`-prefixed LZUTF8 and plain-JSON files; format-aware via `Formats[model.meta.model_format]` |
+| `export_texture_to_png(texture_id, path)` | Write a single project texture to disk as PNG via `texture.canvas.toDataURL` (composites layers automatically) |
 | `force_backup_now()` | Trigger an immediate auto-save backup |
 | `set_project_resolution(width, height)` | Set `texture_width`/`texture_height` (UV coordinate space) |
 | `delete_texture(id)` | Remove orphan textures programmatically |
-| `switch_to_tab(tab)` | Switch edit/paint/animate/display modes |
-| `get_project_state()` | Diagnostic JSON: name, format, save_path, texture sizes, counts |
+| `switch_to_tab(tab)` | Switch `edit`/`paint`/`animate`/`display`/`pose` modes |
+| `get_project_state()` | Diagnostic JSON: name, format, save_path, texture sizes, counts, current mode |
+
+### Plugin hot-swap
+
+| Tool | Purpose |
+|---|---|
+| `install_plugin_from_path(path, plugin_id?)` | Install/replace a Blockbench plugin from a local `.js` file with `source: "file"`. Replicates Blockbench's private `Plugin.#runCode` (`new Function(...)`) so the new bundle's `Plugin.register(id, {...})` mutates the existing instance via `extend()` and re-runs `onload`. Persists via direct `StateMemory.save("installed_plugins")`. **Closes the iterative-fork-development loop**: `bun run build` → call this tool → MCP server reconnects in ~200 ms, no UI clicks |
+
+### Attachment points
+
+| Tool | Purpose |
+|---|---|
+| `create_locator(name, position, parent?)` | First-class `Locator` element creation. Locators export as named glTF nodes / `Marker3D` in Godot — for muzzle points, ejection ports, footstep origins |
+| `create_null_object(name, position, parent?, ik_target?, lock_ik_target_rotation?)` | First-class `NullObject` element. Drives IK targets for hand/foot constraints |
+| `add_reference_image(path, position?, scale?, axis?)` | Backdrop image for matching concept art |
+
+### Cube / mesh editing
+
+| Tool | Purpose |
+|---|---|
+| `modify_cube_uv(id, faces[])` | Per-face UV / rotation / texture binding / tint / enabled on existing cubes (complements `place_cube` which only sets face UVs at creation) |
+| `flip_mesh_normals(mesh_id?, faces?)` | Flip face normal direction by reversing vertex order via `MeshFace.invert()`. Useful after extrudes go inside-out |
+| `inspect_mesh_geometry(mesh_id?, epsilon?)` | Read-only geometry inspector: vertex/face/edge counts, bounding box, non-manifold edges, boundary edges, zero-area faces, duplicate vertices, unused vertices. Use before glTF export to catch issues that would break Godot import |
+| `select_mesh_elements` (upstream + extended) | Now supports `topology` parameter: `connected` (BFS from current selection or `elements` seeds), `boundary` (faces with unshared edges), `inverse` (faces NOT currently selected) |
+
+### UV / animation
+
+| Tool | Purpose |
+|---|---|
+| `uv_island_transform(mesh_id?, seed_face?, translate?, scale?, rotate_degrees?)` | Translate / scale / rotate an entire UV island (discovered via `MeshFace.getUVIsland()`) around its centroid. For atlas repacking |
+| `manage_animations(action, animation_id?, ...)` | Animation lifecycle CRUD: `list`, `delete`, `rename`, `set_loop` (once/loop/hold), `set_length`, `select`. Flexible name lookup handles auto-prefixed names like `animation.idle` |
+
+### Selection inspection
+
+| Tool | Purpose |
+|---|---|
+| `get_selection()` | Read current selection across all levels: outliner elements bucketed by class, mesh sub-selections (vertices/edges/faces per mesh), active group, active animation, current mode/tool. Closes the agent ↔ user handoff gap |
 
 ### Symmetry & pivots
 

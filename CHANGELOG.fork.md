@@ -8,7 +8,15 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ## [unreleased] — 2026-05-05
 
+### Added — mesh inspection + smoke test (`server/tools/mesh.ts`, `scripts/smoke_test.py`)
+
+- `inspect_mesh_geometry(mesh_id?, epsilon?)` — read-only geometry inspector. Returns vertex / face / edge counts, bounding box, and an issues report: non-manifold edges (>2 faces sharing one edge), boundary edges (1 face — open seams), zero-area faces (collapsed/degenerate), duplicate vertices (within `epsilon`), unused vertices (no face references). `is_clean: boolean` summary. Use before glTF export to catch problems that would cause Godot import errors. **STABLE**.
+- `scripts/smoke_test.py` — Python smoke test that hits the running MCP server, walks through 15 fork-only tools across 9 test groups (registration, project setup, silent IO, attachments, cube edit, mesh creation, topology selection, animation CRUD, save/reload round-trip), and asserts expected results. Run with `python3 scripts/smoke_test.py`. Protects against regressions when rebasing on upstream — full pass in ~1 s.
+
 ### Changed
+
+- `select_mesh_elements`: ensure `Project.mesh_selection[mesh.uuid]` is initialized before reading/writing. Previous `?? {...}` fallback silently wrote to a fresh local object when the entry didn't exist, so changes never reached Project state. Partial fix — Blockbench may still wipe the selection on certain post-edit lifecycle events (`mesh.select()`, `Canvas.updateView({selection: true})`, undo finishEdit) which is outside our control, but the explicit init is a strict improvement and is required by the topology branch's seed reads.
+- `README.md`: rewritten Quick reference table covering all 30+ fork-only tools (was stale at "23 additional tools" header). Detailed sections expanded for new categories: hot-swap, attachment points, cube/mesh editing, UV/animation, selection inspection.
 
 - `select_mesh_elements` gained a `topology` parameter (face mode only): `connected` (BFS through shared-edge adjacency from current selection or `elements` seeds), `boundary` (faces with at least one unshared edge — open mesh borders), `inverse` (all faces NOT currently selected). Closes the last gap-analysis "Consider"-tier item that had real pipeline value (mesh cleanup workflow, finding open seams). Verified on closed sphere (boundary=0) and open quad (boundary=1).
 - `install_plugin_from_path` promoted from EXPERIMENTAL to STABLE — has been the daily hot-swap mechanism for fork builds, no failures observed.
