@@ -1,17 +1,31 @@
 {
   "name": "blockbench-mcp",
   "version": "1.5.0",
-  "description": "Blockbench MCP server plugin",
+  "description": "Blockbench MCP server plugin — McMarius11 fork with 30+ additional tools (silent file I/O, attachment points, plugin hot-swap, animation CRUD, mesh inspector, topology selection, UV island transform) for AI-driven 3D asset pipelines.",
   "keywords": [
     "Blockbench",
-    "MCP"
+    "MCP",
+    "Godot",
+    "Claude",
+    "AI",
+    "3D",
+    "gamedev",
+    "asset-pipeline"
   ],
   "license": "GPL-3.0-only",
-  "author": "Jason J. Gardner",
+  "author": "Jason J. Gardner (upstream); McMarius11 (mcmarius/extensions fork)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/McMarius11/blockbench-mcp-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/McMarius11/blockbench-mcp-plugin/issues"
+  },
+  "homepage": "https://github.com/McMarius11/blockbench-mcp-plugin#readme",
   "type": "module",
   "main": "dist/mcp.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "bun test",
     "dev": "bun run ./build --sourcemap",
     "dev:watch": "bun run dev --watch",
     "build": "bun run ./build --minify",
