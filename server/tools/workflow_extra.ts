@@ -159,6 +159,21 @@ export const meshLoopCutParameters = z.object({
     .describe("Number of cuts to make in the loop."),
 });
 
+export const bindMeshFaceTexturesParameters = z.object({
+  mesh_id: z
+    .string()
+    .describe("Mesh UUID or name."),
+  texture: z
+    .string()
+    .describe("Texture UUID, name, or id to bind to the mesh's faces."),
+  face_keys: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Specific face keys to bind. If omitted, binds ALL faces of the mesh."
+    ),
+});
+
 export const alignElementsParameters = z.object({
   element_ids: z
     .array(z.string())
@@ -353,6 +368,14 @@ export const workflowExtraToolDocs: ToolSpec[] = [
       "Write a Blockbench setting. Useful for changing autosave_interval, theme, default formats, etc. without going through the UI.",
     annotations: { title: "Write Setting", destructiveHint: true, openWorldHint: false },
     parameters: writeSettingParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "bind_mesh_face_textures",
+    description:
+      "Bind a texture to mesh faces. Workaround for upstream `place_mesh` and `apply_texture` not setting `face.texture` on mesh elements (only sets UV). Without binding, mesh faces render as the untextured pink/cyan pattern. Pass face_keys=null to bind every face.",
+    annotations: { title: "Bind Mesh Face Textures", destructiveHint: true, openWorldHint: false },
+    parameters: bindMeshFaceTexturesParameters,
     status: STATUS_STABLE,
   },
 ];
@@ -733,4 +756,57 @@ export function registerWorkflowExtraTools() {
       return `Set ${key} = ${JSON.stringify(value)}.`;
     },
   }, workflowExtraToolDocs[15].status);
+
+  // ---- bind_mesh_face_textures ----
+  // Workaround for upstream bug: place_mesh and apply_texture both fail to set
+  // face.texture on mesh elements. Without this binding, faces render as
+  // Blockbench's untextured pink/cyan checker pattern. Equivalent to what
+  // modify_cube_uv does for cubes.
+  createTool(workflowExtraToolDocs[16].name, {
+    ...workflowExtraToolDocs[16],
+    async execute({ mesh_id, texture, face_keys }: any) {
+      ensureProject();
+      const mesh = findElement(mesh_id);
+      if (!mesh || mesh.type !== "mesh") {
+        throw new Error(`Mesh not found or not a mesh: ${mesh_id}`);
+      }
+      // @ts-ignore - Texture is a Blockbench global
+      const tex = Texture.all.find(
+        (t: any) =>
+          t.uuid === texture ||
+          t.name === texture ||
+          String(t.id) === String(texture)
+      );
+      if (!tex) throw new Error(`Texture not found: ${texture}`);
+
+      const allKeys = Object.keys(mesh.faces);
+      const targets: string[] = Array.isArray(face_keys) && face_keys.length > 0
+        ? face_keys
+        : allKeys;
+
+      let bound = 0;
+      for (const fk of targets) {
+        const face = mesh.faces[fk];
+        if (!face) continue;
+        // Blockbench MeshFace.texture stores the texture's UUID at runtime;
+        // serializer converts to numeric id when saving the bbmodel.
+        face.texture = tex.uuid;
+        bound++;
+      }
+
+      // Trigger viewport + UV editor update
+      // @ts-ignore - Canvas is a Blockbench global
+      if (typeof Canvas !== "undefined") {
+        // @ts-ignore
+        Canvas.updateView({ elements: [mesh], element_aspects: { faces: true } });
+      }
+      // @ts-ignore - UVEditor is a Blockbench global
+      if (typeof UVEditor !== "undefined" && typeof UVEditor.loadData === "function") {
+        // @ts-ignore
+        UVEditor.loadData();
+      }
+
+      return `Bound texture "${tex.name}" to ${bound} face(s) on mesh "${mesh.name}".`;
+    },
+  }, workflowExtraToolDocs[16].status);
 }
