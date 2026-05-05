@@ -19,6 +19,7 @@ import { registerMaterialInstanceTools } from "./tools/material-instances";
 import { registerArmatureTools } from "./tools/armature";
 import { registerSilentTools } from "./tools/silent";
 import { registerWorkflowExtraTools } from "./tools/workflow_extra";
+import { registerAttachmentTools } from "./tools/attachments";
 
 // Core resource registrations
 import { registerValidatorResources } from "./resources/validator";
@@ -32,6 +33,7 @@ import { registerHytalePrompts } from "./prompts/hytale";
 const registrationFunctions = [
   registerAnimationTools,
   registerArmatureTools,
+  registerAttachmentTools,
   registerCameraTools,
   registerCubesTools,
   registerElementTools,

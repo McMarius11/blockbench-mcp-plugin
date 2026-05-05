@@ -8,6 +8,19 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ## [unreleased] — 2026-05-05
 
+### Added — file I/O + attachment points + plugin hot-swap (`server/tools/silent.ts` +3, `server/tools/attachments.ts` new, 5 tools)
+
+- `open_project_file(path)` — load an existing `.bbmodel` from disk into the running Blockbench instance. Handles both LZUTF8-compressed (`<lz>`-prefix) and plain-JSON files; resolves the format via `Formats[model.meta.model_format]`, calls `newProject(format)` to seat a fresh project slot, then `format.codec.load(model, file)` to populate it. Sets `Project.save_path` so subsequent Ctrl+S writes back to the same file. Closes the "fork is create-only" gap — every iteration on existing assets previously needed manual File→Open. **STABLE**.
+- `export_texture_to_png(texture_id, path)` — write a single project `Texture` to disk as a standalone PNG via `texture.canvas.toDataURL("image/png")` → `Buffer.from(base64, "base64")` → `fs.writeFileSync`. Composites texture layers automatically (the canvas is the source-of-truth in Blockbench 4.9+). **STABLE**.
+- `create_locator(name, position, parent?)` — first-class `Locator` element creation via `new Locator({name, from: position}).init().addTo(group)`. Locators export as named nodes in glTF and become `Marker3D`-equivalents in Godot — pipeline-required for muzzle points, ejection ports, footstep origins, particle/audio emitter mounts. **STABLE**.
+- `create_null_object(name, position, parent?, ik_target?, lock_ik_target_rotation?)` — first-class `NullObject` element via `new NullObject({name, position, ik_target, lock_ik_target_rotation}).init().addTo(group)`. Drives IK targets for hand/foot constraints on rigged characters. **STABLE**.
+- `install_plugin_from_path(path, plugin_id?)` — hot-swap the running MCP plugin (or any plugin by id) from a local `.js` file with `source: "file"`, surviving Blockbench restarts (no URL re-download). Replicates Blockbench's private `Plugin.#runCode` mechanism (`new Function('requireNativeModule', 'require', code + '\n//# sourceURL=...')`) so the bundle's trailing `Plugin.register(id, {...})` call mutates the existing `Plugins.registered[id]` instance via `extend()` and re-runs `onload`. Persists the new path/source via direct mutation of `Plugins.installed` + `StateMemory.save("installed_plugins")`. Defers actual install via `setTimeout(..., 250)` so the MCP response flushes before the running plugin tears itself down. Closes the chicken-and-egg in iterative fork development — `bun run build` → call this tool → MCP server reconnects in ~200 ms, no UI clicks. **EXPERIMENTAL**.
+
+### Changed
+
+- `server/tools/silent.ts` — `switch_to_tab` enum extended with `"pose"`. Pose-mode is format-conditional (only formats with `pose_mode: true` accept it); the existing `Modes.options[tab].select()` path throws a clear error for formats that don't.
+- `server/tools.ts` — registered new `registerAttachmentTools` entry point alongside the existing module entry points.
+
 ### Added — silent IO tools (`server/tools/silent.ts`, 7 tools)
 
 - `save_project_silent(path, compressed?)` — direct `.bbmodel` write. Uses `Codecs.project.compile()` + `LZUTF8.compress(content, {outputEncoding: "StorageBinaryString"})` to produce on-disk format byte-identical to upstream `save_project`. Status: **STABLE**.

@@ -83,11 +83,44 @@ export const deleteTextureParameters = z.object({
     .describe("Texture UUID, name, or numeric id."),
 });
 
+export const openProjectFileParameters = z.object({
+  path: z
+    .string()
+    .describe(
+      "Absolute filesystem path to a .bbmodel file. Loads it as the active project, replacing any currently open project's contents."
+    ),
+});
+
+export const exportTextureToPngParameters = z.object({
+  texture_id: z
+    .string()
+    .describe("Texture UUID, name, or numeric id to export."),
+  path: z
+    .string()
+    .describe(
+      "Absolute filesystem path to write the PNG to. Parent directory must exist."
+    ),
+});
+
+export const installPluginFromPathParameters = z.object({
+  path: z
+    .string()
+    .describe(
+      "Absolute filesystem path to the plugin's compiled .js file (e.g. the fork's dist/mcp.js). The plugin is registered with source='file' so future Blockbench restarts won't auto-overwrite it from a URL source."
+    ),
+  plugin_id: z
+    .string()
+    .optional()
+    .describe(
+      "Optional plugin id. If omitted, derived from the filename (e.g. 'mcp.js' → 'mcp'). For replacing the MCP plugin itself, pass 'mcp' or omit."
+    ),
+});
+
 export const switchToTabParameters = z.object({
   tab: z
-    .enum(["edit", "paint", "animate", "display"])
+    .enum(["edit", "paint", "animate", "display", "pose"])
     .describe(
-      "Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs."
+      "Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats)."
     ),
 });
 
@@ -179,6 +212,42 @@ export const silentToolDocs: ToolSpec[] = [
     },
     parameters: z.object({}),
     status: STATUS_STABLE,
+  },
+  {
+    name: "open_project_file",
+    description:
+      "Load an existing .bbmodel from disk into the running Blockbench instance, replacing the currently open project. Mirror of `save_project_silent` — handles both LZUTF8-compressed and plain-JSON .bbmodel files. Use this to iterate on previously saved assets without manual File→Open.",
+    annotations: {
+      title: "Open Project File",
+      destructiveHint: true,
+      openWorldHint: false,
+    },
+    parameters: openProjectFileParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "export_texture_to_png",
+    description:
+      "Write a single project texture to disk as a standalone PNG. Reads the texture's composited canvas (so layered textures are flattened on export). Use this to bake an in-Blockbench atlas back out to disk for Godot import.",
+    annotations: {
+      title: "Export Texture to PNG",
+      destructiveHint: false,
+      openWorldHint: false,
+    },
+    parameters: exportTextureToPngParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "install_plugin_from_path",
+    description:
+      "Install or replace a Blockbench plugin from a local .js file with source='file'. Survives restarts (unlike URL-source which auto-redownloads). Use to hot-swap fork builds without UI clicks: after `bun run build`, call this with the dist/mcp.js path. CAVEAT: replacing the running MCP plugin causes a brief MCP server disconnect (~1-2s) — reconnect via /mcp afterwards.",
+    annotations: {
+      title: "Install Plugin From Path",
+      destructiveHint: true,
+      openWorldHint: false,
+    },
+    parameters: installPluginFromPathParameters,
+    status: STATUS_EXPERIMENTAL,
   },
 ];
 
@@ -463,5 +532,308 @@ export function registerSilentTools() {
       },
     },
     silentToolDocs[6].status
+  );
+
+  // ---- open_project_file ----
+  createTool(
+    silentToolDocs[7].name,
+    {
+      ...silentToolDocs[7],
+      async execute({ path }: { path: string }) {
+        const fs = getFs();
+        if (!fs.existsSync(path)) {
+          throw new Error(`File not found: ${path}`);
+        }
+
+        // .bbmodel is text: either plain JSON or "<lz>"-prefixed LZUTF8.
+        let content: string = fs.readFileSync(path, "utf-8");
+
+        if (content.startsWith("<lz>")) {
+          // @ts-ignore - LZUTF8 is bundled into Blockbench
+          if (typeof LZUTF8 === "undefined") {
+            throw new Error(
+              "File is LZUTF8-compressed but LZUTF8 is not available in this Blockbench version."
+            );
+          }
+          // @ts-ignore
+          content = LZUTF8.decompress(content.substring(4), {
+            inputEncoding: "StorageBinaryString",
+          });
+        }
+
+        let model: any;
+        try {
+          model = JSON.parse(content);
+        } catch (e: any) {
+          throw new Error(
+            `Failed to parse JSON from ${path}: ${e?.message ?? e}`
+          );
+        }
+
+        const formatId: string | undefined = model?.meta?.model_format;
+        if (!formatId) {
+          throw new Error(
+            `File missing meta.model_format — not a valid .bbmodel.`
+          );
+        }
+
+        // @ts-ignore - Formats is a Blockbench global
+        const format = Formats[formatId];
+        if (!format) {
+          throw new Error(
+            `Unknown model format "${formatId}" — not registered in this Blockbench version.`
+          );
+        }
+
+        // Create a fresh project slot for this format. This sets Project to a
+        // new ModelProject; the codec.load() below populates it from `model`.
+        // @ts-ignore - newProject is a Blockbench global
+        newProject(format);
+
+        // @ts-ignore - format.codec is the format-specific load handler
+        const codec = format.codec || Codecs.project;
+        if (typeof codec.load !== "function") {
+          throw new Error(
+            `Codec for format "${formatId}" exposes no load() method.`
+          );
+        }
+
+        // Synthesize a FileResult-like object — Blockbench's load() typically
+        // reads .path / .name from this for save-back resolution.
+        const file = {
+          path,
+          name: path.split(/[\/\\]/).pop() ?? "loaded.bbmodel",
+          content,
+        };
+
+        // @ts-ignore
+        codec.load(model, file, { import_to_current_project: false });
+
+        // @ts-ignore - Project is a Blockbench global
+        if (Project) {
+          // @ts-ignore
+          Project.save_path = path;
+          // @ts-ignore
+          Project.saved = true;
+        }
+
+        // @ts-ignore
+        const cubes = typeof Cube !== "undefined" ? Cube.all.length : 0;
+        // @ts-ignore
+        const meshes = typeof Mesh !== "undefined" ? Mesh.all.length : 0;
+        // @ts-ignore
+        const textures = typeof Texture !== "undefined" ? Texture.all.length : 0;
+
+        return `Opened project from ${path}: "${
+          // @ts-ignore
+          Project?.name ?? "unnamed"
+        }" (format=${formatId}, ${cubes} cubes, ${meshes} meshes, ${textures} textures).`;
+      },
+    },
+    silentToolDocs[7].status
+  );
+
+  // ---- export_texture_to_png ----
+  createTool(
+    silentToolDocs[8].name,
+    {
+      ...silentToolDocs[8],
+      async execute({ texture_id, path }: { texture_id: string; path: string }) {
+        ensureProject();
+        const fs = getFs();
+
+        // @ts-ignore - Texture is a Blockbench global
+        const tex = Texture.all.find(
+          (t: any) =>
+            t.uuid === texture_id ||
+            t.name === texture_id ||
+            String(t.id) === texture_id ||
+            t.name + ".png" === texture_id
+        );
+        if (!tex) {
+          throw new Error(
+            `Texture "${texture_id}" not found. Use list_textures to see available textures.`
+          );
+        }
+
+        // texture.canvas is the composited source-of-truth (flattens layers).
+        const canvas: HTMLCanvasElement | undefined = tex.canvas;
+        if (!canvas || typeof canvas.toDataURL !== "function") {
+          throw new Error(
+            `Texture "${tex.name}" has no canvas data — cannot export.`
+          );
+        }
+
+        const dataUrl: string = canvas.toDataURL("image/png");
+        const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+        const buffer = Buffer.from(base64, "base64");
+        fs.writeFileSync(path, buffer);
+
+        return `Exported texture "${tex.name}" (${canvas.width}×${canvas.height}) to ${path} (${buffer.length} bytes).`;
+      },
+    },
+    silentToolDocs[8].status
+  );
+
+  // ---- install_plugin_from_path ----
+  createTool(
+    silentToolDocs[9].name,
+    {
+      ...silentToolDocs[9],
+      async execute({
+        path,
+        plugin_id,
+      }: {
+        path: string;
+        plugin_id?: string;
+      }) {
+        const fs = getFs();
+        if (!fs.existsSync(path)) {
+          throw new Error(`Plugin file not found: ${path}`);
+        }
+
+        // Derive plugin id from filename if not provided.
+        const filename = path.split(/[\/\\]/).pop() ?? "";
+        if (!filename.endsWith(".js")) {
+          throw new Error(`Path must point to a .js file: ${path}`);
+        }
+        const id = plugin_id ?? filename.replace(/\.js$/, "");
+
+        // Pre-validate that we won't trash an unrelated plugin: the slot
+        // Plugins.registered[id] must be empty OR be the same plugin we're
+        // replacing (matching source/path or already a file-source plugin).
+        // @ts-ignore - Plugins is a Blockbench global
+        const existing: any = (Plugins as any)?.registered?.[id];
+        if (
+          existing &&
+          existing.source &&
+          existing.source !== "file" &&
+          existing.source !== "url"
+        ) {
+          throw new Error(
+            `Plugin id "${id}" is already loaded with source="${existing.source}" — refusing to replace. Pass a different plugin_id or uninstall manually first.`
+          );
+        }
+
+        // Defer the actual install so the MCP response is sent before we
+        // tear down the running plugin (which would kill the HTTP socket).
+        // Once setTimeout fires, closures on Blockbench globals (Plugin,
+        // Plugins, fs, StateMemory, requireNativeModule) survive plugin
+        // unload, so the swap completes even though "this" instance is
+        // mid-replacement.
+        setTimeout(() => {
+          try {
+            const content: string = fs.readFileSync(path, {
+              encoding: "utf-8",
+            });
+            if (typeof content !== "string" || content.length < 20) {
+              throw new Error(`Plugin file is empty or unreadable: ${path}`);
+            }
+
+            // @ts-ignore
+            let target: any = (Plugins as any)?.registered?.[id];
+
+            if (target) {
+              // Same-id replacement: unload (fires onunload — tears down our
+              // MCP server) but keep the registered slot. The new code's
+              // `Plugin.register(id, {...})` will mutate this instance via
+              // extend() and call runOnLoad() to bring it back up.
+              try {
+                if (typeof target.unload === "function") target.unload();
+              } catch (e) {
+                console.warn(
+                  "[install_plugin_from_path] unload threw (continuing):",
+                  e
+                );
+              }
+            } else {
+              // First-time install: construct a fresh Plugin and seat it in
+              // Plugins.registered[id] before evaluating the new code, so
+              // the trailing Plugin.register call finds it.
+              // @ts-ignore - Plugin is a Blockbench global
+              target = new Plugin(id);
+              // @ts-ignore
+              if ((Plugins as any).all && !(Plugins as any).all.includes(target)) {
+                // @ts-ignore
+                (Plugins as any).all.push(target);
+              }
+            }
+
+            // Mark source + path BEFORE eval so onload/oninstall can read them.
+            target.source = "file";
+            target.path = path;
+            target.tags = Array.isArray(target.tags) ? target.tags : [];
+            if (!target.tags.includes("Local")) target.tags.push("Local");
+
+            // @ts-ignore
+            (Plugins as any).registered[id] = target;
+
+            // Replicate Blockbench's private #runCode: scoped Function with
+            // sourceURL annotation so DevTools can attribute errors to the
+            // plugin file.
+            const sourceURL = `\n//# sourceURL=PLUGINS/(Plugin):${id}.js`;
+            // @ts-ignore - requireNativeModule is a Blockbench global
+            const reqNative =
+              typeof requireNativeModule !== "undefined"
+                ? requireNativeModule
+                : undefined;
+            // The new bundle ends with `Plugin.register(id, {...})` which will
+            // call target.extend(data) (re-binding onload/onunload/etc via
+            // Merge.function) and then target.runOnLoad() — restarting MCP.
+            const fn = new Function(
+              "requireNativeModule",
+              "require",
+              content + sourceURL
+            );
+            fn(reqNative, reqNative);
+
+            // Mark installed and persist via StateMemory (Blockbench's
+            // localStorage wrapper). Replicates the relevant parts of the
+            // private #remember() method.
+            target.installed = true;
+            // @ts-ignore
+            const installedList: any[] = (Plugins as any).installed;
+            if (Array.isArray(installedList)) {
+              let entry = installedList.find((p: any) => p?.id === id);
+              const already = !!entry;
+              if (!entry) entry = {};
+              entry.id = id;
+              entry.version = target.version;
+              entry.path = path;
+              entry.source = "file";
+              if (target.disabled) entry.disabled = true;
+              else delete entry.disabled;
+              if (!already) installedList.push(entry);
+            }
+            // @ts-ignore - StateMemory is a Blockbench global
+            if (
+              typeof StateMemory !== "undefined" &&
+              typeof (StateMemory as any).save === "function"
+            ) {
+              // @ts-ignore
+              (StateMemory as any).save("installed_plugins");
+            }
+
+            // @ts-ignore - Plugins.sort exists on the registry
+            if (typeof (Plugins as any).sort === "function") {
+              // @ts-ignore
+              (Plugins as any).sort();
+            }
+
+            console.log(
+              `[install_plugin_from_path] swapped plugin "${id}" → ${path}`
+            );
+          } catch (e: any) {
+            console.error(
+              "[install_plugin_from_path] install failed:",
+              e?.stack || e
+            );
+          }
+        }, 250);
+
+        return `Scheduled install of plugin "${id}" from ${path} (source=file). MCP server will disconnect briefly while reloading — reconnect via /mcp after ~1-2s.`;
+      },
+    },
+    silentToolDocs[9].status
   );
 }
