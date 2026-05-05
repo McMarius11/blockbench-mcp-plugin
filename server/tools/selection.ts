@@ -49,7 +49,10 @@ export function registerSelectionTools() {
         // @ts-ignore - Project.selected_elements is OutlinerElement[]
         const elements: OutlinerElement[] = Project.selected_elements ?? [];
 
-        // Bucket selected outliner elements by class.
+        // Bucket selected outliner elements by class. Use instanceof against
+        // Blockbench's globally-exported classes — robust to minification
+        // (the previous `constructor.name` approach broke on production
+        // builds because class names get mangled to "rc", "tk" etc.).
         const buckets: Record<string, Array<{ name: string; uuid: string }>> = {
           cubes: [],
           meshes: [],
@@ -62,37 +65,44 @@ export function registerSelectionTools() {
           other: [],
         };
 
+        // Build [class-or-undefined, bucket-key] pairs. typeof guards against
+        // older Blockbench versions that may lack newer classes (Armature
+        // landed in 5.0; some forks may run on 4.x).
+        const classMap: Array<[any, string]> = [
+          // @ts-ignore
+          [typeof Cube !== "undefined" ? Cube : null, "cubes"],
+          // @ts-ignore
+          [typeof Mesh !== "undefined" ? Mesh : null, "meshes"],
+          // @ts-ignore
+          [typeof Locator !== "undefined" ? Locator : null, "locators"],
+          // @ts-ignore
+          [typeof NullObject !== "undefined" ? NullObject : null, "null_objects"],
+          // @ts-ignore
+          [typeof TextureMesh !== "undefined" ? TextureMesh : null, "texture_meshes"],
+          // @ts-ignore - ArmatureBone first because it's typically a subclass scenario
+          [typeof ArmatureBone !== "undefined" ? ArmatureBone : null, "armature_bones"],
+          // @ts-ignore
+          [typeof Armature !== "undefined" ? Armature : null, "armatures"],
+          // @ts-ignore - Group last (some elements like Mesh extend Group-ish behavior)
+          [typeof Group !== "undefined" ? Group : null, "groups"],
+        ];
+
         for (const el of elements) {
           const entry = { name: (el as any).name, uuid: (el as any).uuid };
-          // @ts-ignore - constructor name disambiguates element type
-          const tag = (el as any).constructor?.name ?? "other";
-          switch (tag) {
-            case "Cube":
-              buckets.cubes.push(entry);
+          let placed = false;
+          for (const [cls, bucket] of classMap) {
+            if (cls && el instanceof cls) {
+              buckets[bucket].push(entry);
+              placed = true;
               break;
-            case "Mesh":
-              buckets.meshes.push(entry);
-              break;
-            case "Group":
-              buckets.groups.push(entry);
-              break;
-            case "Locator":
-              buckets.locators.push(entry);
-              break;
-            case "NullObject":
-              buckets.null_objects.push(entry);
-              break;
-            case "TextureMesh":
-              buckets.texture_meshes.push(entry);
-              break;
-            case "Armature":
-              buckets.armatures.push(entry);
-              break;
-            case "ArmatureBone":
-              buckets.armature_bones.push(entry);
-              break;
-            default:
-              buckets.other.push({ ...entry, kind: tag } as any);
+            }
+          }
+          if (!placed) {
+            const tag =
+              typeof (el as any)?.constructor?.name === "string"
+                ? (el as any).constructor.name
+                : "unknown";
+            buckets.other.push({ ...entry, kind: tag } as any);
           }
         }
 
