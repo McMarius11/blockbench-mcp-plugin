@@ -3,6 +3,8 @@
 Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner/blockbench-mcp-plugin) with **30+ additional tools** that close gaps in the upstream MCP coverage. Built for AI-driven 3D asset pipelines (e.g. [`asset-generator-blockbench`](https://github.com/McMarius11/asset-generator-blockbench)).
 
 > Original upstream README is preserved at [`README.upstream.md`](./README.upstream.md). License (GPL-3.0-only) is unchanged.
+>
+> Known limitations and deferred items are tracked in [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md).
 
 ## Quick reference — fork-only tools
 
