@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Fork-specific note (read this first)
+
+This is the `mcmarius/extensions` fork of `jasonjgardner/blockbench-mcp-plugin`. Before starting work:
+
+1. **Read [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md)** — 9 tracked items including one Blockbench-internal limitation (mesh selection wipes between MCP requests). Don't burn time re-investigating documented quirks.
+2. **Read [`CHANGELOG.fork.md`](./CHANGELOG.fork.md)** — every fork-only tool with the API symbol it wraps and why it was added.
+3. **Tests live in two places**:
+   - `lib/mesh-analysis.test.ts` — pure-function unit tests via `bun test` (~140 ms, no Blockbench needed)
+   - `scripts/smoke_test.py` — 37 integration assertions against the live MCP HTTP server (~2 s, needs Blockbench running with the fork plugin loaded)
+   - Run BOTH before committing changes that touch `server/tools/*.ts`.
+4. **Fork-only tools are listed in `README.md`** Quick reference table — 30+ tools across silent file I/O, attachment points, plugin hot-swap, animation CRUD, mesh inspector, topology selection, UV islands.
+5. **Plugin is installed with `source: "file"`** pointing at `dist/mcp.js` of THIS clone. Hot-swap workflow: `bun run build` → `mcp__blockbench__install_plugin_from_path("/abs/path/to/dist/mcp.js")` → MCP reconnects in <1 s. Or **Ctrl+J in Blockbench** for manual reload.
+6. **Architecture split**:
+   - `server/tools/*.ts` — MCP-tool wrappers (Schema → ToolSpec → createTool with Undo + Canvas)
+   - `lib/mesh-analysis.ts` — pure algorithms (no Blockbench coupling, unit-testable)
+   - `lib/factories.ts` / `lib/util.ts` / `lib/zodObjects.ts` — shared infra
+7. **EXPERIMENTAL vs STABLE**: respect the existing labels. STABLE = tested on 5.1.x and pattern-stable. EXPERIMENTAL = depends on version-specific globals or BarItems-click patterns.
+
 ## Project Overview
 
 Blockbench MCP is a plugin that integrates the Model Context Protocol (MCP) into Blockbench, enabling AI models to interact with the 3D modeling software through exposed tools, resources, and prompts. It runs an HTTP server inside Blockbench that accepts MCP requests.
@@ -17,9 +35,11 @@ bun run ./build.ts --clean      # Clean dist/ before building
 bun run docs:build              # Generate API docs from Zod schemas
 bun run docs:serve              # Serve docs locally with Tailwind
 bunx @modelcontextprotocol/inspector  # Test MCP tools locally
+bun test                        # Run unit tests (lib/*.test.ts)
+python3 scripts/smoke_test.py   # Run integration tests (needs running Blockbench)
 ```
 
-Output goes to `dist/mcp.js`. Load in Blockbench via File > Plugins > Load Plugin from File.
+Output goes to `dist/mcp.js`. Load in Blockbench via File > Plugins > Load Plugin from File. For iterative development on this fork: hot-swap via the `install_plugin_from_path` MCP tool after each rebuild.
 
 ## Architecture
 
