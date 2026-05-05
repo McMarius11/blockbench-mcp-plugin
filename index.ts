@@ -1,7 +1,9 @@
 /**
- * @author jasonjgardner
+ * @author jasonjgardner (upstream)
+ * @author McMarius11 (mcmarius/extensions fork — 30+ added tools)
  * @discord jason.gardner
- * @github https://github.com/jasonjgardner
+ * @github upstream: https://github.com/jasonjgardner/blockbench-mcp-plugin
+ * @github fork:     https://github.com/McMarius11/blockbench-mcp-plugin
  */
 /// <reference types="three" />
 /// <reference types="blockbench-types" />
@@ -22,10 +24,11 @@ let sessionTransports: SessionTransports | null = null;
 
 BBPlugin.register("mcp", {
   version: VERSION,
-  title: "MCP Server",
-  author: "Jason J. Gardner",
-  description: "Create an MCP server inside Blockbench.",
-  tags: ["MCP", "AI"],
+  title: "MCP Server (McMarius11 fork)",
+  author: "Jason J. Gardner (upstream) · McMarius11 (fork)",
+  description:
+    "Create an MCP server inside Blockbench. McMarius11 fork adds 30+ tools for AI-driven asset pipelines: silent file I/O, attachment points (Locator/NullObject), plugin hot-swap, animation CRUD, mesh inspector, topology selection, UV island transform.",
+  tags: ["MCP", "AI", "Fork"],
   icon: getIcon(),
   variant: "desktop",
   async onload() {
