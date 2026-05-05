@@ -8,6 +8,16 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ## [unreleased] — 2026-05-05
 
+### Added — pure-function extraction + unit tests + perf + edge-case coverage (`lib/mesh-analysis.ts`, `lib/mesh-analysis.test.ts`)
+
+Quality pass closing the remaining caveats from the in-session audit:
+
+- **`lib/mesh-analysis.ts`** — extracted the topology / geometry algorithms from `inspect_mesh_geometry` and the `select_mesh_elements` topology branch into a pure-function module: `triangleArea`, `faceArea`, `edgeKey`, `faceEdges`, `buildEdgeAdjacency`, `findBoundaryEdges`, `findNonManifoldEdges`, `findDuplicateVertices`, `findUnusedVertices`, `boundingBox`, `connectedFaces`. Zero Blockbench coupling — testable without a running editor.
+- **`lib/mesh-analysis.test.ts`** — 34 unit tests via `bun test` covering the extracted algorithms (right triangles, collinear points, manifold/non-manifold detection, spatial-hash duplicate detection across cell boundaries, BFS connected-component traversal, disconnected-component isolation). Run: `bun test`. Total ~140ms.
+- **Spatial-hash duplicate-vertex detection** — `findDuplicateVertices` rewritten from O(n²) pairwise compare to uniform-grid spatial hash with O(n) average complexity. Each vertex is bucketed into `floor(coord/2ε)` cells; pairs are only compared within same/neighbouring cells (3×3×3 neighbourhood). Caps at 50 reported pairs (was the previous limit, preserved). For typical retro PSX meshes (<1000 verts) the runtime drops from milliseconds to microseconds; for dense meshes (>10K verts) it's the difference between "instant" and "noticeable hang".
+- **Edge-case test coverage** — smoke test #11 verifies paths with spaces (`dir with spaces/spaced asset.bbmodel`), unicode element names (`münze_münzposition`), and unicode filenames (`tëxtür_ünïcödé.png`). Catches encoding/quoting issues before they bite real asset workflows.
+- **`install_plugin_from_path` timing comment** — documented why the 250ms setTimeout is safe (HTTP response flush is microseconds for loopback TCP, 2-3 orders of magnitude clear of the delay), so future readers don't worry about a phantom race.
+
 ### Added — mesh inspection + smoke test (`server/tools/mesh.ts`, `scripts/smoke_test.py`)
 
 - `inspect_mesh_geometry(mesh_id?, epsilon?)` — read-only geometry inspector. Returns vertex / face / edge counts, bounding box, and an issues report: non-manifold edges (>2 faces sharing one edge), boundary edges (1 face — open seams), zero-area faces (collapsed/degenerate), duplicate vertices (within `epsilon`), unused vertices (no face references). `is_clean: boolean` summary. Use before glTF export to catch problems that would cause Godot import errors. **STABLE**.

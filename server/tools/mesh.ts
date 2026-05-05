@@ -14,6 +14,20 @@ import {
 } from "@/lib/zodObjects";
 import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
 import { getProjectTexture, getMeshOrSelected, findMeshOrThrow } from "@/lib/util";
+import {
+  buildEdgeAdjacency,
+  findBoundaryEdges,
+  findNonManifoldEdges,
+  findDuplicateVertices,
+  findUnusedVertices,
+  faceArea,
+  boundingBox,
+  connectedFaces,
+  edgeKey,
+  type Vec3,
+  type VertexDict,
+  type FaceDict,
+} from "@/lib/mesh-analysis";
 
 // ============================================================================
 // Mesh Tool Parameter Schemas
@@ -694,18 +708,14 @@ export function registerMeshTools() {
         const allFaceKeys = Object.keys(mesh.faces);
         const currentSelectedFaces = new Set(selection.faces);
 
-        // Build edge → face[] adjacency map (key: "min-max" of vkeys).
-        const edgeKey = (a: string, b: string) =>
-          a < b ? `${a}-${b}` : `${b}-${a}`;
-        const edgeToFaces = new Map<string, string[]>();
+        // Build plain face dict for the analysis layer.
+        const faceDict: FaceDict = {};
         for (const fkey of allFaceKeys) {
-          const face = mesh.faces[fkey];
-          for (const [a, b] of face.getEdges() as unknown as [string, string][]) {
-            const k = edgeKey(a, b);
-            if (!edgeToFaces.has(k)) edgeToFaces.set(k, []);
-            edgeToFaces.get(k)!.push(fkey);
-          }
+          faceDict[fkey] = {
+            vertices: mesh.faces[fkey].vertices as string[],
+          };
         }
+        const edgeMap = buildEdgeAdjacency(faceDict);
 
         let resultFaces: string[] = [];
 
@@ -714,13 +724,14 @@ export function registerMeshTools() {
             (k) => !currentSelectedFaces.has(k)
           );
         } else if (topology === "boundary") {
+          // A face is on the boundary if any of its edges is shared by < 2
+          // faces.
           for (const fkey of allFaceKeys) {
-            const face = mesh.faces[fkey];
-            for (const [a, b] of face.getEdges() as unknown as [
+            for (const [a, b] of (mesh.faces[fkey].getEdges() as unknown as [
               string,
               string
-            ][]) {
-              const sharing = edgeToFaces.get(edgeKey(a, b)) ?? [];
+            ][])) {
+              const sharing = edgeMap.get(edgeKey(a, b)) ?? [];
               if (sharing.length < 2) {
                 resultFaces.push(fkey);
                 break;
@@ -741,26 +752,7 @@ export function registerMeshTools() {
               "topology='connected' needs either explicit `elements` as seeds or a non-empty current face selection."
             );
           }
-          const visited = new Set<string>(seedKeys);
-          const queue = [...seedKeys];
-          while (queue.length > 0) {
-            const cur = queue.shift()!;
-            const face = mesh.faces[cur];
-            if (!face) continue;
-            for (const [a, b] of face.getEdges() as unknown as [
-              string,
-              string
-            ][]) {
-              const neighbours = edgeToFaces.get(edgeKey(a, b)) ?? [];
-              for (const n of neighbours) {
-                if (n !== cur && !visited.has(n)) {
-                  visited.add(n);
-                  queue.push(n);
-                }
-              }
-            }
-          }
-          resultFaces = Array.from(visited);
+          resultFaces = connectedFaces(seedKeys, faceDict, edgeMap);
         }
 
         // Apply the derived set respecting `action` semantics. In-place
@@ -1311,135 +1303,41 @@ export function registerMeshTools() {
         const mesh = getMeshOrSelected(mesh_id);
         const eps = epsilon ?? 0.0001;
 
-        const vertexKeys = Object.keys(mesh.vertices);
-        const faceKeys = Object.keys(mesh.faces);
-
-        // Bounding box.
-        let bbMin: [number, number, number] = [Infinity, Infinity, Infinity];
-        let bbMax: [number, number, number] = [
-          -Infinity,
-          -Infinity,
-          -Infinity,
-        ];
-        for (const vk of vertexKeys) {
-          const v = mesh.vertices[vk];
-          for (let i = 0; i < 3; i++) {
-            if (v[i] < bbMin[i]) bbMin[i] = v[i];
-            if (v[i] > bbMax[i]) bbMax[i] = v[i];
-          }
+        // Build plain dicts for the analysis layer (no Blockbench coupling).
+        const vertices: VertexDict = mesh.vertices as any;
+        const faces: FaceDict = {};
+        for (const fkey of Object.keys(mesh.faces)) {
+          faces[fkey] = { vertices: mesh.faces[fkey].vertices as string[] };
         }
-        if (vertexKeys.length === 0) {
-          bbMin = [0, 0, 0];
-          bbMax = [0, 0, 0];
-        }
+        const vertexKeys = Object.keys(vertices);
+        const faceKeys = Object.keys(faces);
 
-        // Edge → faces map.
-        const edgeKey = (a: string, b: string) =>
-          a < b ? `${a}-${b}` : `${b}-${a}`;
-        const edgeToFaces = new Map<string, string[]>();
-        for (const fkey of faceKeys) {
-          const face = mesh.faces[fkey];
-          const edges = face.getEdges() as unknown as [string, string][];
-          for (const [a, b] of edges) {
-            const k = edgeKey(a, b);
-            if (!edgeToFaces.has(k)) edgeToFaces.set(k, []);
-            edgeToFaces.get(k)!.push(fkey);
-          }
-        }
+        const edgeMap = buildEdgeAdjacency(faces);
+        const non_manifold_edges = findNonManifoldEdges(edgeMap);
+        const boundary_edges = findBoundaryEdges(edgeMap);
 
-        const non_manifold_edges: Array<{
-          vkeys: [string, string];
-          face_count: number;
-        }> = [];
-        const boundary_edges: Array<[string, string]> = [];
-        for (const [k, faces] of edgeToFaces.entries()) {
-          const [a, b] = k.split("-") as [string, string];
-          if (faces.length === 1) {
-            boundary_edges.push([a, b]);
-          } else if (faces.length > 2) {
-            non_manifold_edges.push({
-              vkeys: [a, b],
-              face_count: faces.length,
-            });
-          }
-        }
-
-        // Zero-area faces. Triangle area = 0.5 * |AB × AC|. Quad: split
-        // into (0,1,2) + (0,2,3) triangles, both must be non-degenerate
-        // OR we accept "either tri non-degenerate" as valid. Use sum.
+        // Zero-area faces via the pure faceArea helper.
         const zero_area_faces: string[] = [];
-        const triArea = (
-          a: [number, number, number],
-          b: [number, number, number],
-          c: [number, number, number]
-        ): number => {
-          const abx = b[0] - a[0],
-            aby = b[1] - a[1],
-            abz = b[2] - a[2];
-          const acx = c[0] - a[0],
-            acy = c[1] - a[1],
-            acz = c[2] - a[2];
-          const cx = aby * acz - abz * acy;
-          const cy = abz * acx - abx * acz;
-          const cz = abx * acy - aby * acx;
-          return 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
-        };
         for (const fkey of faceKeys) {
-          const face = mesh.faces[fkey];
-          const verts = face.vertices as string[];
+          const verts = faces[fkey].vertices;
           if (verts.length < 3) {
             zero_area_faces.push(fkey);
             continue;
           }
-          const v0 = mesh.vertices[verts[0]] as [number, number, number];
-          const v1 = mesh.vertices[verts[1]] as [number, number, number];
-          const v2 = mesh.vertices[verts[2]] as [number, number, number];
-          let area = triArea(v0, v1, v2);
-          if (verts.length === 4) {
-            const v3 = mesh.vertices[verts[3]] as [number, number, number];
-            area += triArea(v0, v2, v3);
-          }
-          if (area < eps) zero_area_faces.push(fkey);
+          const triPts = verts.map((vk) => vertices[vk] as Vec3);
+          if (faceArea(triPts) < eps) zero_area_faces.push(fkey);
         }
 
-        // Duplicate vertices — O(n^2) pairwise compare with epsilon. Caps
-        // at 50 reported pairs to keep the response manageable.
-        const duplicate_vertices: Array<{
-          a: string;
-          b: string;
-          distance: number;
-        }> = [];
-        const dupCap = 50;
-        outer: for (let i = 0; i < vertexKeys.length; i++) {
-          const a = vertexKeys[i];
-          const va = mesh.vertices[a];
-          for (let j = i + 1; j < vertexKeys.length; j++) {
-            const b = vertexKeys[j];
-            const vb = mesh.vertices[b];
-            const dx = va[0] - vb[0],
-              dy = va[1] - vb[1],
-              dz = va[2] - vb[2];
-            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            if (dist < eps) {
-              duplicate_vertices.push({ a, b, distance: dist });
-              if (duplicate_vertices.length >= dupCap) break outer;
-            }
-          }
-        }
+        // O(n) avg spatial-hash duplicate-vertex detection.
+        const dup = findDuplicateVertices(vertices, eps, 50);
 
-        // Unused vertices — referenced by zero faces.
-        const usedVerts = new Set<string>();
-        for (const fkey of faceKeys) {
-          for (const vk of mesh.faces[fkey].vertices as string[]) {
-            usedVerts.add(vk);
-          }
-        }
-        const unused_vertices = vertexKeys.filter((k) => !usedVerts.has(k));
+        const unused_vertices = findUnusedVertices(vertices, faces);
+        const bb = boundingBox(vertices);
 
         const is_clean =
           non_manifold_edges.length === 0 &&
           zero_area_faces.length === 0 &&
-          duplicate_vertices.length === 0 &&
+          dup.pairs.length === 0 &&
           unused_vertices.length === 0;
         // Note: boundary_edges are not an "issue" by themselves — open meshes
         // legitimately have them. We report the count for awareness but don't
@@ -1451,17 +1349,16 @@ export function registerMeshTools() {
             mesh_uuid: mesh.uuid,
             vertex_count: vertexKeys.length,
             face_count: faceKeys.length,
-            edge_count: edgeToFaces.size,
-            bounding_box: { min: bbMin, max: bbMax },
+            edge_count: edgeMap.size,
+            bounding_box: { min: bb.min, max: bb.max },
             issues: {
               non_manifold_edges,
               boundary_edges_count: boundary_edges.length,
               boundary_edges:
                 boundary_edges.length <= 100 ? boundary_edges : undefined,
               zero_area_faces,
-              duplicate_vertices,
-              duplicate_vertices_truncated:
-                duplicate_vertices.length >= dupCap ? true : undefined,
+              duplicate_vertices: dup.pairs,
+              duplicate_vertices_truncated: dup.truncated || undefined,
               unused_vertices,
             },
             is_clean,

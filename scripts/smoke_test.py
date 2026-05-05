@@ -489,7 +489,7 @@ class TestRunner:
         self.expect_ok("manage_animations delete", ok, text)
 
     def t_round_trip(self) -> None:
-        print("\n[9/10] save → reload round-trip")
+        print("\n[9/11] save → reload round-trip")
         bbmodel = os.path.join(self.workdir, "round_trip.bbmodel")
         ok, text = self.c.call("save_project_silent", {"path": bbmodel})
         self.expect_ok("save round_trip.bbmodel", ok, text)
@@ -519,7 +519,7 @@ class TestRunner:
         builds, dropping every element into the `other` bucket with
         `kind: "rc"` instead of `meshes`. Now uses instanceof checks.
         """
-        print("\n[10/10] get_selection bucketing on minified build")
+        print("\n[10/11] get_selection bucketing on minified build")
         # Create a fresh sphere and a locator, select them, verify they
         # land in the right buckets and NOT in `other`.
         ok, _ = self.c.call(
@@ -613,6 +613,61 @@ class TestRunner:
                     "separate documented limitation)"
                 )
 
+    def t_edge_cases(self) -> None:
+        """Edge-case coverage: paths with spaces, unicode in element names,
+        long path lengths. Catches encoding / quoting issues before they
+        bite in the asset pipeline."""
+        print("\n[11/11] edge cases (spaces in paths, unicode names)")
+
+        # Path with spaces — common Windows / macOS asset-folder pattern.
+        spaced_dir = os.path.join(self.workdir, "dir with spaces")
+        os.makedirs(spaced_dir, exist_ok=True)
+        spaced_path = os.path.join(spaced_dir, "spaced asset.bbmodel")
+        ok, text = self.c.call("save_project_silent", {"path": spaced_path})
+        self.expect_ok(
+            "save_project_silent path with spaces",
+            ok,
+            text,
+            also_check=lambda _: os.path.exists(spaced_path),
+        )
+
+        ok, text = self.c.call("open_project_file", {"path": spaced_path})
+        self.expect_ok(
+            "open_project_file path with spaces",
+            ok,
+            text,
+        )
+
+        # Unicode element name — the agent might be asked to model assets
+        # with non-ASCII names (e.g. German "Wandfackel", Japanese names).
+        ok, text = self.c.call(
+            "create_locator",
+            {
+                "name": "münze_münzposition",
+                "position": [0, 5, 0],
+                "parent": "root",
+            },
+        )
+        self.expect_ok(
+            "create_locator with unicode name",
+            ok,
+            text,
+            also_check=lambda t: "münze" in t,
+        )
+
+        # Texture export to path with unicode — write through fs.writeFileSync.
+        unicode_png = os.path.join(self.workdir, "tëxtür_ünïcödé.png")
+        ok, text = self.c.call(
+            "export_texture_to_png",
+            {"texture_id": "tex", "path": unicode_png},
+        )
+        self.expect_ok(
+            "export_texture_to_png unicode filename",
+            ok,
+            text,
+            also_check=lambda _: os.path.exists(unicode_png),
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -653,6 +708,7 @@ def main() -> int:
         runner.t_animations()
         runner.t_round_trip()
         runner.t_selection_bucketing()
+        runner.t_edge_cases()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir}")

@@ -726,10 +726,15 @@ export function registerSilentTools() {
 
         // Defer the actual install so the MCP response is sent before we
         // tear down the running plugin (which would kill the HTTP socket).
-        // Once setTimeout fires, closures on Blockbench globals (Plugin,
-        // Plugins, fs, StateMemory, requireNativeModule) survive plugin
-        // unload, so the swap completes even though "this" instance is
-        // mid-replacement.
+        //
+        // Why 250ms is safe: the MCP framework completes the response after
+        // our `return` statement (the Express-like layer serializes and
+        // pushes to the TCP socket synchronously in the same microtask).
+        // For loopback HTTP that flush takes <1ms — we're 2-3 orders of
+        // magnitude clear of any plausible serialization delay. Closures
+        // on Blockbench globals (Plugin, Plugins, fs, StateMemory,
+        // requireNativeModule) survive plugin unload, so the swap completes
+        // even though "this" instance is mid-replacement.
         setTimeout(() => {
           try {
             const content: string = fs.readFileSync(path, {
