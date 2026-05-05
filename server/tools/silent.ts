@@ -42,9 +42,9 @@ export const savePathParameters = z.object({
   compressed: z
     .boolean()
     .optional()
-    .default(true)
+    .default(false)
     .describe(
-      "Whether to compress the .bbmodel with LZUTF8 (Blockbench's default). Set false for plain JSON."
+      "Legacy LZUTF8 compression. Modern Blockbench (5.x) writes .bbmodel as plain JSON — leave false unless you specifically need the legacy `<lz>`-prefixed format. If true and LZUTF8 is unavailable in the running Blockbench, the call throws (no silent fallback)."
     ),
 });
 
@@ -265,31 +265,40 @@ export function registerSilentTools() {
         ensureProject();
         const fs = getFs();
 
-        // Use Blockbench's project codec to serialize current state
+        // Use Blockbench's project codec to serialize current state.
         // @ts-ignore - Codecs is a Blockbench global
         const codec = Codecs.project;
         if (!codec || typeof codec.compile !== "function") {
           throw new Error("Blockbench project codec not available.");
         }
         let content = codec.compile({ raw: false });
+        let actuallyCompressed = false;
 
-        // Apply LZUTF8 compression matching Blockbench's default save format
+        // Optional legacy LZUTF8 compression. Modern Blockbench (5.x) writes
+        // .bbmodel as plain JSON — this branch is for backward compatibility
+        // with older versions or specific tooling that expects the `<lz>`
+        // prefix. We throw on missing LZUTF8 instead of silently falling
+        // through, so the caller knows their `compressed: true` request
+        // didn't produce what they asked for.
         if (compressed) {
-          // @ts-ignore - LZUTF8 is bundled into Blockbench
+          // @ts-ignore - LZUTF8 used to be bundled into Blockbench
           if (typeof LZUTF8 !== "undefined") {
             // @ts-ignore
             const compressedBody = LZUTF8.compress(content, {
               outputEncoding: "StorageBinaryString",
             });
             content = "<lz>" + compressedBody;
+            actuallyCompressed = true;
           } else {
-            console.warn("[MCP] LZUTF8 not found, writing plain JSON.");
+            throw new Error(
+              "compressed=true requested but LZUTF8 is not available in this Blockbench version. Modern Blockbench writes plain JSON — call with compressed=false (the default)."
+            );
           }
         }
 
         fs.writeFileSync(path, content);
 
-        // Update project state so subsequent Ctrl+S knows where to go
+        // Update project state so subsequent Ctrl+S writes back to this file.
         // @ts-ignore - Project is a Blockbench global
         if (Project) {
           // @ts-ignore
@@ -298,7 +307,7 @@ export function registerSilentTools() {
           Project.saved = true;
         }
 
-        return `Saved project silently to ${path} (${content.length} bytes, ${compressed ? "compressed" : "plain"}).`;
+        return `Saved project silently to ${path} (${content.length} bytes, ${actuallyCompressed ? "LZUTF8-compressed" : "plain JSON"}).`;
       },
     },
     silentToolDocs[0].status

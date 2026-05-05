@@ -360,9 +360,42 @@ export function registerMeshTools() {
           vertices: {},
         }).init();
 
+        // Track vkey per input-vertex-index so face specs (which reference
+        // vertices by 0-based index) can resolve to the actual vertex keys.
+        const vkeys: string[] = [];
         element.vertices.forEach((vertex) => {
-          mesh.addVertices(vertex as ArrayVector3);
+          const result = mesh.addVertices(vertex as ArrayVector3);
+          // addVertices returns an array of new vkeys; one vertex in → one out.
+          vkeys.push(Array.isArray(result) ? result[0] : (result as any));
         });
+
+        // Build faces from index-based specs. Without this loop, the mesh
+        // has only loose vertices and renders as nothing.
+        const faceSpecs = (element as any).faces ?? [];
+        for (const spec of faceSpecs) {
+          const vertexKeys = (spec.vertices as number[]).map(
+            (idx: number) => vkeys[idx]
+          );
+          if (vertexKeys.some((k) => !k)) {
+            throw new Error(
+              `Face on mesh "${element.name}" references invalid vertex index — vertices array has ${vkeys.length} entries.`
+            );
+          }
+          const faceUv: Record<string, [number, number]> = {};
+          if (spec.uv && typeof spec.uv === "object") {
+            for (const [idxStr, uv] of Object.entries(spec.uv)) {
+              const vk = vkeys[Number(idxStr)];
+              if (vk) faceUv[vk] = uv as [number, number];
+            }
+          }
+          mesh.addFaces(
+            // @ts-ignore - MeshFace is a Blockbench global
+            new MeshFace(mesh, {
+              vertices: vertexKeys,
+              uv: faceUv,
+            })
+          );
+        }
 
         mesh.addTo(outlinerGroup);
         mesh.applyTexture(projectTexture);
@@ -380,7 +413,12 @@ export function registerMeshTools() {
 
       return await Promise.resolve(
         JSON.stringify(
-          meshes.map((mesh) => `Added mesh ${mesh.name} with ID ${mesh.uuid}`)
+          meshes.map(
+            (mesh) =>
+              `Added mesh ${mesh.name} with ID ${mesh.uuid} (${
+                Object.keys(mesh.vertices).length
+              } verts, ${Object.keys(mesh.faces).length} faces)`
+          )
         )
       );
     },

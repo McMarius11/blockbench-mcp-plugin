@@ -8,6 +8,11 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ## [unreleased] — 2026-05-05
 
+### Fixed
+
+- `place_mesh` now actually creates faces. The `meshSchema` in `lib/zodObjects.ts` exposed `vertices` but had no `faces` field; the `place_mesh` execute called `mesh.addVertices(...)` per vertex but never `mesh.addFaces(...)`, so every created mesh had loose vertices and no surface (rendered as nothing). Schema now accepts `faces: [{ vertices: [int], uv?: { "<idx>": [u,v] } }]` referencing vertices by 0-based index; execute resolves indices to vkeys via the `addVertices` return value and calls `mesh.addFaces(new MeshFace(mesh, {...}))` per face. Return message now includes `(N verts, M faces)` for verification.
+- `save_project_silent` no longer silently writes plain JSON when LZUTF8 is unavailable. Default for `compressed` is now `false` (matching modern Blockbench 5.x which writes `.bbmodel` as plain JSON). With `compressed: true`, if LZUTF8 isn't a global (Blockbench dropped it in newer versions), the call now throws a clear error instead of silently falling through. Return message reports `plain JSON` vs `LZUTF8-compressed` accurately.
+
 ### Added — selection state, cube face UV, mesh normals, animation CRUD, UV islands (`server/tools/selection.ts` new, 5 tools)
 
 Closes the remaining "Recommend / Consider" items from the gap-analysis audit (open_project_file, export_texture_to_png, locators, hot-swap shipped earlier — these are the next-tier follow-ups).

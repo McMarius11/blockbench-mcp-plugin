@@ -310,6 +310,36 @@ export const meshSchema = z.object({
     .optional()
     .default([])
     .describe("Vertices of the mesh."),
+  faces: z
+    .array(
+      z.object({
+        vertices: z
+          .array(z.number().int().nonnegative())
+          .min(3)
+          .max(4)
+          .describe(
+            "0-based indices into the `vertices` array. 3 entries = triangle, 4 = quad."
+          ),
+        uv: z
+          .record(
+            z
+              .string()
+              .describe(
+                "Vertex index (as string key) of this face whose UV is being specified."
+              ),
+            vector2Schema
+          )
+          .optional()
+          .describe(
+            'Per-vertex UVs for this face: { "<vertex_index>": [u, v] } in project pixel space. Missing entries default to [0, 0].'
+          ),
+      })
+    )
+    .optional()
+    .default([])
+    .describe(
+      "Faces of the mesh. Each face references 3-4 vertices by their index in `vertices`. Without this, the mesh has only loose vertices (no surface)."
+    ),
 });
 
 /** Keyframe data for animation tools */
