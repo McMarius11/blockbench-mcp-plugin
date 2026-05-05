@@ -8,6 +8,20 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ## [unreleased] — 2026-05-05
 
+### Added — selection state, cube face UV, mesh normals, animation CRUD, UV islands (`server/tools/selection.ts` new, 5 tools)
+
+Closes the remaining "Recommend / Consider" items from the gap-analysis audit (open_project_file, export_texture_to_png, locators, hot-swap shipped earlier — these are the next-tier follow-ups).
+
+- `get_selection()` — read the current Blockbench selection across all levels: outliner elements bucketed by type (cubes, meshes, groups, locators, null objects, texture meshes, armatures, bones), per-mesh sub-selections (selected vertices/edges/faces via `mesh.getSelectedVertices/Edges/Faces`), active group, active animation (`Animation.selected`), current mode (`Modes.selected.id`), current tool (`Toolbox.selected.id`). Read-only. Closes the agent ↔ user handoff gap — "paint the selected face" / "extrude the picked edge" workflows. **STABLE**.
+- `modify_cube_uv(id, faces[])` — edit per-face UV / rotation / texture / tint / enabled on an existing cube via `cubeFace.extend({uv, rotation, texture, tint, enabled})`. Complements `place_cube` (face UV at creation only) and `modify_cube` (only box-UV / autouv / uv_offset). UV coords in project pixel space. For tile-kit / atlas-packed cube models. **STABLE**.
+- `flip_mesh_normals(mesh_id?, faces?)` — flip face normals by reversing vertex order via `MeshFace.invert()`. Targets explicit face keys, current selection, or the whole mesh. Useful after extrudes go inside-out, when imported geometry has wrong winding, or for inverted-shell effects. **STABLE**.
+- `manage_animations(action, animation_id?, ...)` — animation lifecycle CRUD: `list` / `delete` / `rename` / `set_loop` (once/loop/hold via `Animation.setLoop`) / `set_length` (`Animation.setLength`) / `select`. Flexible name lookup handles the Bedrock/free-format auto-prefix (`animation.idle` matches `idle`). Complements the existing `create_animation` and `manage_keyframes`. **STABLE**.
+- `uv_island_transform(mesh_id?, seed_face?, translate?, scale?, rotate_degrees?)` — transform an entire UV island as a unit. Discovers the island via `MeshFace.getUVIsland()` from a seed face (explicit > first selected > first overall). Composes translate → scale → rotate around the island's UV centroid. For atlas repacking and fitting unwrapped islands to specific texture regions. **EXPERIMENTAL**.
+
+### Changed
+
+- `server/tools.ts` — registered new `registerSelectionTools` entry point.
+
 ### Added — file I/O + attachment points + plugin hot-swap (`server/tools/silent.ts` +3, `server/tools/attachments.ts` new, 5 tools)
 
 - `open_project_file(path)` — load an existing `.bbmodel` from disk into the running Blockbench instance. Handles both LZUTF8-compressed (`<lz>`-prefix) and plain-JSON files; resolves the format via `Formats[model.meta.model_format]`, calls `newProject(format)` to seat a fresh project slot, then `format.codec.load(model, file)` to populate it. Sets `Project.save_path` so subsequent Ctrl+S writes back to the same file. Closes the "fork is create-only" gap — every iteration on existing assets previously needed manual File→Open. **STABLE**.

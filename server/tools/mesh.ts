@@ -186,6 +186,16 @@ export const knifeToolParameters = z.object({
     .describe("Points defining the cut path."),
 });
 
+export const flipMeshNormalsParameters = z.object({
+  mesh_id: meshIdOptionalSchema,
+  faces: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Specific face keys to flip. If omitted, flips currently selected faces; if no selection, flips ALL faces of the mesh."
+    ),
+});
+
 // ============================================================================
 // Mesh Tool Docs
 // ============================================================================
@@ -301,6 +311,17 @@ export const meshToolDocs: ToolSpec[] = [
     },
     parameters: knifeToolParameters,
     status: STATUS_EXPERIMENTAL,
+  },
+  {
+    name: "flip_mesh_normals",
+    description:
+      "Flip the normal direction of mesh faces by reversing vertex order (calls MeshFace.invert() per face). Useful after extrudes go inside-out, when imported geometry has wrong winding, or for retro flat-shaded inverted-shell effects. Operates on explicit face keys, current selection, or whole mesh.",
+    annotations: {
+      title: "Flip Mesh Normals",
+      destructiveHint: true,
+    },
+    parameters: flipMeshNormalsParameters,
+    status: STATUS_STABLE,
   },
 ];
 
@@ -989,4 +1010,55 @@ export function registerMeshTools() {
       return `Applied knife cut to mesh "${mesh.name}" with ${points.length} points`;
     },
   }, meshToolDocs[10].status);
+
+  // ---- flip_mesh_normals ----
+  createTool(
+    meshToolDocs[11].name,
+    {
+      ...meshToolDocs[11],
+      async execute({
+        mesh_id,
+        faces,
+      }: {
+        mesh_id?: string;
+        faces?: string[];
+      }) {
+        const mesh = getMeshOrSelected(mesh_id);
+
+        // Resolve target face keys: explicit list > current selection > all faces.
+        let targetKeys: string[] = [];
+        if (faces && faces.length > 0) {
+          targetKeys = faces.filter((k) => mesh.faces[k]);
+        } else if (typeof mesh.getSelectedFaces === "function") {
+          targetKeys = mesh.getSelectedFaces(false).slice();
+        }
+        if (targetKeys.length === 0) {
+          targetKeys = Object.keys(mesh.faces);
+        }
+        if (targetKeys.length === 0) {
+          throw new Error(`Mesh "${mesh.name}" has no faces to flip.`);
+        }
+
+        Undo.initEdit({ elements: [mesh], collections: [] });
+
+        let flipped = 0;
+        for (const key of targetKeys) {
+          const face = mesh.faces[key];
+          if (!face || typeof (face as any).invert !== "function") continue;
+          (face as any).invert();
+          flipped++;
+        }
+
+        Undo.finishEdit("Flip mesh normals");
+        // @ts-ignore - Canvas is a Blockbench global
+        Canvas.updateView({
+          elements: [mesh],
+          element_aspects: { geometry: true, faces: true },
+        });
+
+        return `Flipped normals on ${flipped} face(s) of mesh "${mesh.name}".`;
+      },
+    },
+    meshToolDocs[11].status
+  );
 }

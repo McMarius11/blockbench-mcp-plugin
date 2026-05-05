@@ -6,6 +6,8 @@ import { cubeSchema } from "@/lib/zodObjects";
 import { STATUS_STABLE } from "@/lib/constants";
 import { getProjectTexture } from "@/lib/util";
 
+const cubeFaceEnum = z.enum(["north", "south", "east", "west", "up", "down"]);
+
 export const placeCubeParameters = z.object({
   elements: z.array(cubeSchema).min(1).describe("Array of cubes to place."),
   texture: z
@@ -97,6 +99,55 @@ export const modifyCubeParameters = z.object({
     .describe("Whether the cube is visible or not."),
 });
 
+export const modifyCubeUvParameters = z.object({
+  id: z
+    .string()
+    .optional()
+    .describe(
+      "ID or name of the cube to modify. Defaults to selected (single cube)."
+    ),
+  faces: z
+    .array(
+      z.object({
+        face: cubeFaceEnum.describe(
+          "Cube face to update: north / south / east / west / up / down."
+        ),
+        uv: z
+          .array(z.number())
+          .length(4)
+          .optional()
+          .describe(
+            "UV rectangle in project pixel coordinates [u1, v1, u2, v2]."
+          ),
+        rotation: z
+          .union([
+            z.literal(0),
+            z.literal(90),
+            z.literal(180),
+            z.literal(270),
+          ])
+          .optional()
+          .describe("Face UV rotation in degrees (0/90/180/270)."),
+        texture: z
+          .string()
+          .optional()
+          .describe(
+            "Optional texture id/name to assign to this face. Pass an empty string to clear."
+          ),
+        enabled: z
+          .boolean()
+          .optional()
+          .describe("Whether this face is rendered. Default true."),
+        tint: z
+          .number()
+          .optional()
+          .describe("Bedrock-style face tint index (-1 disables)."),
+      })
+    )
+    .min(1)
+    .describe("Per-face UV / rotation / texture overrides to apply."),
+});
+
 export const cubeToolDocs: ToolSpec[] = [
   {
     name: "place_cube",
@@ -118,6 +169,17 @@ export const cubeToolDocs: ToolSpec[] = [
       destructiveHint: true,
     },
     parameters: modifyCubeParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "modify_cube_uv",
+    description:
+      "Edit per-face UV / rotation / texture / tint on an existing cube. Complements `place_cube` (which only accepts face UVs at creation time) and `modify_cube` (which exposes only box-UV / autouv / uv_offset). UV coordinates are in the project's pixel space (texture_width × texture_height) — match `set_project_resolution`. For tile-kit / atlas-packed cube models.",
+    annotations: {
+      title: "Modify Cube Face UV",
+      destructiveHint: true,
+    },
+    parameters: modifyCubeUvParameters,
     status: STATUS_STABLE,
   },
 ];
@@ -259,4 +321,70 @@ createTool(cubeToolDocs[1].name, {
       .join(", ")} with IDs ${cubes.map((cube) => cube.uuid).join(", ")}`;
   },
 }, cubeToolDocs[1].status);
+
+createTool(cubeToolDocs[2].name, {
+  ...cubeToolDocs[2],
+  async execute({ id, faces }) {
+    let cube: Cube | undefined;
+    if (id) {
+      cube = (Cube.all ?? []).find(
+        (c: Cube) => c.uuid === id || c.name === id
+      );
+      if (!cube) {
+        throw new Error(
+          `Cube "${id}" not found. Use list_outline to see available cubes.`
+        );
+      }
+    } else {
+      cube = Cube.selected[0];
+      if (!cube) {
+        throw new Error(
+          "No cube selected and no id provided. Select a cube or pass an id."
+        );
+      }
+    }
+
+    Undo.initEdit({
+      elements: [cube],
+      uv_only: true,
+      collections: [],
+    });
+
+    const updated: string[] = [];
+    for (const spec of faces) {
+      const cubeFace = cube.faces[spec.face];
+      if (!cubeFace) {
+        throw new Error(
+          `Cube "${cube.name}" has no face "${spec.face}".`
+        );
+      }
+      const patch: Record<string, any> = {};
+      if (spec.uv !== undefined) patch.uv = spec.uv;
+      if (spec.rotation !== undefined) patch.rotation = spec.rotation;
+      if (spec.tint !== undefined) patch.tint = spec.tint;
+      if (spec.enabled !== undefined) patch.enabled = spec.enabled;
+      if (spec.texture !== undefined) {
+        if (spec.texture === "") {
+          patch.texture = null;
+        } else {
+          const tex = getProjectTexture(spec.texture);
+          if (!tex) {
+            throw new Error(
+              `Texture "${spec.texture}" not found. Use list_textures.`
+            );
+          }
+          // Blockbench accepts the Texture instance via face.extend({texture}).
+          patch.texture = tex;
+        }
+      }
+      cubeFace.extend(patch);
+      updated.push(spec.face);
+    }
+
+    Undo.finishEdit("Agent modified cube face UV");
+    Canvas.updateAll();
+
+    return `Updated faces [${updated.join(", ")}] on cube "${cube.name}" (UUID: ${cube.uuid}).`;
+  },
+}, cubeToolDocs[2].status);
 }

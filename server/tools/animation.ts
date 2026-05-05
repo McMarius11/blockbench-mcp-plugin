@@ -246,6 +246,58 @@ export const animationCopyPasteParameters = z.object({
     .describe("Target data for paste operation."),
 });
 
+export const manageAnimationsParameters = z
+  .object({
+    action: z
+      .enum(["list", "delete", "rename", "set_loop", "set_length", "select"])
+      .describe(
+        "Operation: list = enumerate all animations; delete = remove; rename = change name; set_loop = once/loop/hold; set_length = change duration; select = make this the active animation in the timeline."
+      ),
+    animation_id: z
+      .string()
+      .optional()
+      .describe(
+        "Animation UUID or name. Required for all actions except 'list'."
+      ),
+    new_name: z
+      .string()
+      .optional()
+      .describe("New name (action='rename')."),
+    loop: loopModeEnum
+      .optional()
+      .describe(
+        "Loop mode: once / loop / hold (action='set_loop')."
+      ),
+    length: z
+      .number()
+      .min(0)
+      .optional()
+      .describe("Animation length in seconds (action='set_length')."),
+  })
+  .refine(
+    (p) => p.action === "list" || !!p.animation_id,
+    {
+      message:
+        "animation_id is required for any action other than 'list'.",
+      path: ["animation_id"],
+    }
+  )
+  .refine((p) => p.action !== "rename" || !!p.new_name, {
+    message: "new_name is required when action='rename'.",
+    path: ["new_name"],
+  })
+  .refine((p) => p.action !== "set_loop" || !!p.loop, {
+    message: "loop is required when action='set_loop'.",
+    path: ["loop"],
+  })
+  .refine(
+    (p) => p.action !== "set_length" || typeof p.length === "number",
+    {
+      message: "length is required when action='set_length'.",
+      path: ["length"],
+    }
+  );
+
 export const animationToolDocs: ToolSpec[] = [
   {
     name: "create_animation",
@@ -321,6 +373,17 @@ export const animationToolDocs: ToolSpec[] = [
     },
     parameters: animationCopyPasteParameters,
     status: STATUS_EXPERIMENTAL,
+  },
+  {
+    name: "manage_animations",
+    description:
+      "Animation lifecycle CRUD: list / delete / rename / set_loop (once/loop/hold) / set_length / select. Complements `create_animation` and `manage_keyframes` which only handle creation and per-keyframe edits. Use 'list' to enumerate; 'delete' to remove; 'set_loop' to control playback behaviour (e.g. 'once' for fire animations, 'loop' for idle/walk, 'hold' for pose-on-last-frame).",
+    annotations: {
+      title: "Manage Animations",
+      destructiveHint: true,
+    },
+    parameters: manageAnimationsParameters,
+    status: STATUS_STABLE,
   },
 ];
 
@@ -1193,4 +1256,110 @@ createTool(
   },
   animationToolDocs[6].status
 );
+
+  // ---- manage_animations ----
+  createTool(
+    animationToolDocs[7].name,
+    {
+      ...animationToolDocs[7],
+      async execute({
+        action,
+        animation_id,
+        new_name,
+        loop,
+        length,
+      }: {
+        action:
+          | "list"
+          | "delete"
+          | "rename"
+          | "set_loop"
+          | "set_length"
+          | "select";
+        animation_id?: string;
+        new_name?: string;
+        loop?: "once" | "loop" | "hold";
+        length?: number;
+      }) {
+        // @ts-ignore - Animation is a Blockbench global
+        const all: any[] = (Animation as any)?.all ?? [];
+
+        if (action === "list") {
+          return JSON.stringify(
+            all.map((a: any) => ({
+              name: a.name,
+              uuid: a.uuid,
+              loop: a.loop,
+              length: a.length,
+              selected: a.selected === true,
+            })),
+            null,
+            2
+          );
+        }
+
+        // Bedrock / "free" formats auto-prefix animation names with
+        // "animation." — match flexibly: exact, suffix, prefix-stripped.
+        const needle = (animation_id ?? "").trim();
+        const target = all.find((a: any) => {
+          if (!needle) return false;
+          if (a.uuid === needle) return true;
+          if (a.name === needle) return true;
+          if (a.name === `animation.${needle}`) return true;
+          if (a.name?.endsWith(`.${needle}`)) return true;
+          return false;
+        });
+        if (!target) {
+          throw new Error(
+            `Animation "${animation_id}" not found. Use action='list' to see available animations.`
+          );
+        }
+
+        switch (action) {
+          case "delete": {
+            const removedName = target.name;
+            // remove(undo, remove_from_file?) — pass true so it shows in undo stack.
+            target.remove(true, false);
+            // @ts-ignore
+            Canvas.updateAll();
+            return `Deleted animation "${removedName}".`;
+          }
+          case "rename": {
+            const oldName = target.name;
+            target.name = new_name as string;
+            if (typeof target.createUniqueName === "function") {
+              target.name = target.createUniqueName(all);
+            }
+            return `Renamed animation "${oldName}" → "${target.name}".`;
+          }
+          case "set_loop": {
+            const prev = target.loop;
+            if (typeof target.setLoop === "function") {
+              target.setLoop(loop, true);
+            } else {
+              target.loop = loop;
+            }
+            return `Set animation "${target.name}" loop mode: ${prev} → ${loop}.`;
+          }
+          case "set_length": {
+            const prev = target.length;
+            if (typeof target.setLength === "function") {
+              target.setLength(length);
+            } else {
+              target.length = length;
+            }
+            return `Set animation "${target.name}" length: ${prev}s → ${length}s.`;
+          }
+          case "select": {
+            if (typeof target.select === "function") {
+              target.select();
+              return `Selected animation "${target.name}" as active.`;
+            }
+            throw new Error("Animation.select() not available in this version.");
+          }
+        }
+      },
+    },
+    animationToolDocs[7].status
+  );
 }
