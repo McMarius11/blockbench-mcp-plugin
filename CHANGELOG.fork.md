@@ -6,6 +6,18 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ---
 
+## [unreleased] — 2026-05-17
+
+### Changed — session inactivity timeout 5min → 60min (`lib/sessions.ts`)
+
+`DEFAULT_INACTIVITY_TIMEOUT_MS` bumped from `5 * 60 * 1000` (5 minutes) to `60 * 60 * 1000` (60 minutes).
+
+Rationale: agentic-coding workflows (Claude Code in particular) regularly have multi-minute stretches with no BB activity while the AI runs Python build scripts, validators, file edits, or external tools. The previous 5min default produced frequent `Session expired or not found. Please reconnect.` errors mid-session, forcing the user to manually `/mcp` reconnect even though Blockbench was still open. Sixty minutes is generous enough for any reasonable batch of non-BB work while still cleaning up genuinely-orphaned sessions (e.g. from a crashed/closed Blockbench) within an hour.
+
+Override via `SessionManager.configure({ inactivityTimeoutMs })` at the `createNetServer` call site if a different value is needed.
+
+---
+
 ## [unreleased] — 2026-05-05
 
 ### Added — pure-function extraction + unit tests + perf + edge-case coverage (`lib/mesh-analysis.ts`, `lib/mesh-analysis.test.ts`)

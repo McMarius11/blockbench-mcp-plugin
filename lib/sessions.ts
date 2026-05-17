@@ -1,5 +1,17 @@
-/** Default session inactivity timeout (5 minutes) */
-export const DEFAULT_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+/** Default session inactivity timeout (60 minutes).
+ *
+ * Bumped from 5min to 60min for agentic-coding workflows where the AI assistant
+ * spends extended time on Python build scripts, validators, or file edits
+ * between BB tool calls. Within a single asset-pipeline session it's common to
+ * have 5-20 minute stretches with no BB activity; the prior 5min default
+ * caused frequent "Session expired" reconnect-and-retry interruptions. Sixty
+ * minutes is generous enough for any reasonable batch of non-BB work while
+ * still cleaning up orphaned sessions from a closed Blockbench within an hour.
+ *
+ * Override at the SessionManager.configure() call site if a different value
+ * is needed (see server/net.ts).
+ */
+export const DEFAULT_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
 
 /** Default ping interval (30 seconds) - per MCP best practices */
 export const DEFAULT_PING_INTERVAL_MS = 30 * 1000;
