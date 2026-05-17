@@ -139,15 +139,26 @@ class SessionManager {
 
   /**
    * Record that a pong (ping response) was received from the session.
-   * This confirms the transport is alive but does NOT count as client
-   * activity — only real MCP requests should reset the inactivity timer
-   * (via updateActivity).
+   *
+   * A successful pong is the spec-defined proof that the connection is
+   * alive (see MCP spec, basic/utilities/ping: "verify that their
+   * counterpart is still responsive and the connection is alive").
+   * We therefore reset the inactivity timeout on every pong — as long as
+   * Blockbench keeps responding to pings, the session stays alive even
+   * across long idle stretches between real MCP tool calls. Orphan
+   * sessions are still cleaned up via the failed-pings path
+   * (recordPingFailed → remove() after maxFailedPings).
+   *
+   * The inactivity timeout itself is retained as a safety net for the
+   * edge case where the ping mechanism develops a bug (e.g. a Pong is
+   * recorded but BB is actually wedged).
    */
   recordPongReceived(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.lastPongAt = new Date();
       session.failedPings = 0;
+      this.resetTimeout(session);
     }
   }
 
