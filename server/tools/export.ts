@@ -60,7 +60,7 @@ export const exportToolDocs: ToolSpec[] = [
   {
     name: "export_model",
     description:
-      "Compiles the current project through the named codec and returns the result as text. Optionally writes the compiled content to a filesystem path (requires user permission in Blockbench v5.0+). Use `list_export_formats` first to discover codec IDs.",
+      "Compiles the current project through the named codec and returns the result as text (or base64 for binary codecs). Optionally writes the compiled content to a filesystem path (requires user permission in Blockbench v5.0+). Awaits async codecs (e.g. glTF/GLB in Blockbench 5.x). Use `list_export_formats` first to discover codec IDs. For glTF/GLB specifically, `export_gltf_silent` is a convenience wrapper with typed `embed_textures` / `animations` options.",
     annotations: {
       title: "Export Model",
       destructiveHint: false,
@@ -201,7 +201,14 @@ export function registerExportTools() {
           ? codec.getExportOptions()
           : undefined);
 
-      const rawResult = codec.compile(effectiveOptions);
+      let rawResult = codec.compile(effectiveOptions);
+
+      // In modern Blockbench (5.x+) some codecs (notably glTF/GLB) return a
+      // Promise from compile(). Without awaiting, the binary/text detection
+      // below sees a Promise object and writes "[object Promise]" to disk.
+      if (rawResult && typeof (rawResult as { then?: unknown }).then === "function") {
+        rawResult = await rawResult;
+      }
 
       const isArrayBuffer = rawResult instanceof ArrayBuffer;
       const isBinaryView =

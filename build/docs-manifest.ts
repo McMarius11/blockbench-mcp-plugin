@@ -18,6 +18,11 @@ import { materialInstanceToolDocs } from "../server/tools/material-instances";
 import { uvToolDocs } from "../server/tools/uv";
 import { historyToolDocs } from "../server/tools/history";
 import { exportToolDocs } from "../server/tools/export";
+// Fork-only tool modules
+import { silentToolDocs } from "../server/tools/silent";
+import { workflowExtraToolDocs } from "../server/tools/workflow_extra";
+import { attachmentToolDocs } from "../server/tools/attachments";
+import { selectionToolDocs } from "../server/tools/selection";
 
 export interface CategoryGroup {
   category: string;
@@ -41,6 +46,11 @@ export const toolManifest: CategoryGroup[] = [
   { category: "UI Interaction", tools: uiToolDocs },
   { category: "UV Mapping", tools: uvToolDocs },
   { category: "Hytale Integration", tools: hytaleToolDocs },
+  // Fork-only categories
+  { category: "Silent IO (fork)", tools: silentToolDocs },
+  { category: "Workflow Extras (fork)", tools: workflowExtraToolDocs },
+  { category: "Attachment Points (fork)", tools: attachmentToolDocs },
+  { category: "Selection (fork)", tools: selectionToolDocs },
 ];
 
 // Prompt specs defined inline — server/prompts.ts uses macros that complicate direct import

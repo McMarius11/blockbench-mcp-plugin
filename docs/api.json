@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-05-24T23:22:24.118Z",
+  "generatedAt": "2026-05-24T23:50:48.726Z",
   "tools": [
     {
       "name": "place_cube",
@@ -2570,7 +2570,7 @@
     {
       "name": "export_model",
       "title": "Export Model",
-      "description": "Compiles the current project through the named codec and returns the result as text. Optionally writes the compiled content to a filesystem path (requires user permission in Blockbench v5.0+). Use `list_export_formats` first to discover codec IDs.",
+      "description": "Compiles the current project through the named codec and returns the result as text (or base64 for binary codecs). Optionally writes the compiled content to a filesystem path (requires user permission in Blockbench v5.0+). Awaits async codecs (e.g. glTF/GLB in Blockbench 5.x). Use `list_export_formats` first to discover codec IDs. For glTF/GLB specifically, `export_gltf_silent` is a convenience wrapper with typed `embed_textures` / `animations` options.",
       "status": "experimental",
       "category": "Export",
       "annotations": {
@@ -6425,6 +6425,1149 @@
                 "markdownDescription": "ID or name of the cube. If not provided, uses selected cube."
               }
             },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "save_project_silent",
+      "title": "Save Project Silently",
+      "description": "Save the current project as .bbmodel to a specific path WITHOUT showing the OS-native save dialog. Replaces `trigger_action(save_project)` for non-interactive workflows.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/save_project_silent",
+        "definitions": {
+          "save_project_silent": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Absolute filesystem path to write to. Parent directory must exist.",
+                "markdownDescription": "Absolute filesystem path to write to. Parent directory must exist."
+              },
+              "compressed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Legacy LZUTF8 compression. Modern Blockbench (5.x) writes .bbmodel as plain JSON — leave false unless you specifically need the legacy `<lz>`-prefixed format. If true and LZUTF8 is unavailable in the running Blockbench, the call throws (no silent fallback).",
+                "markdownDescription": "Legacy LZUTF8 compression. Modern Blockbench (5.x) writes .bbmodel as plain JSON — leave false unless you specifically need the legacy `<lz>`-prefixed format. If true and LZUTF8 is unavailable in the running Blockbench, the call throws (no silent fallback)."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "export_gltf_silent",
+      "title": "Export glTF Silently",
+      "description": "Export the current project as glTF/GLB to a specific path WITHOUT a dialog. Replaces `trigger_action(export_gltf)` for non-interactive workflows. Convenience wrapper over the glTF codec with typed `embed_textures` / `animations` options; for arbitrary formats use the general `export_model` tool.",
+      "status": "experimental",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/export_gltf_silent",
+        "definitions": {
+          "export_gltf_silent": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Absolute filesystem path to write the .glb / .gltf to.",
+                "markdownDescription": "Absolute filesystem path to write the .glb / .gltf to."
+              },
+              "embed_textures": {
+                "type": "boolean",
+                "default": true,
+                "description": "Embed texture data inline in the glTF (recommended for Godot).",
+                "markdownDescription": "Embed texture data inline in the glTF (recommended for Godot)."
+              },
+              "animations": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include animations in the export.",
+                "markdownDescription": "Include animations in the export."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "force_backup_now",
+      "title": "Force Backup Now",
+      "description": "Force Blockbench to write a backup .bbmodel to its auto-save folder immediately. Useful when the agent needs the latest state but the 10-minute auto-save hasn't fired yet.",
+      "status": "experimental",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/force_backup_now",
+        "definitions": {
+          "force_backup_now": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "set_project_resolution",
+      "title": "Set Project Resolution",
+      "description": "Set the project's texture_width and texture_height. UV coordinates passed to `place_cube(faces[].uv)` are interpreted in this coordinate space — set this to match your texture/atlas pixel size BEFORE placing cubes with explicit UVs.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/set_project_resolution",
+        "definitions": {
+          "set_project_resolution": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number",
+                "minimum": 16,
+                "maximum": 4096,
+                "description": "Project's texture_width — controls the UV coordinate space.",
+                "markdownDescription": "Project's texture_width — controls the UV coordinate space."
+              },
+              "height": {
+                "type": "number",
+                "minimum": 16,
+                "maximum": 4096,
+                "description": "Project's texture_height — controls the UV coordinate space.",
+                "markdownDescription": "Project's texture_height — controls the UV coordinate space."
+              }
+            },
+            "required": [
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "delete_texture",
+      "title": "Delete Texture",
+      "description": "Remove a texture from the project. Useful for cleaning up orphan textures before export.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/delete_texture",
+        "definitions": {
+          "delete_texture": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Texture UUID, name, or numeric id.",
+                "markdownDescription": "Texture UUID, name, or numeric id."
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "switch_to_tab",
+      "title": "Switch Mode Tab",
+      "description": "Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/switch_to_tab",
+        "definitions": {
+          "switch_to_tab": {
+            "type": "object",
+            "properties": {
+              "tab": {
+                "type": "string",
+                "enum": [
+                  "edit",
+                  "paint",
+                  "animate",
+                  "display",
+                  "pose"
+                ],
+                "description": "Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats).",
+                "markdownDescription": "Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats)."
+              }
+            },
+            "required": [
+              "tab"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_project_state",
+      "title": "Get Project State",
+      "description": "Return the current project's metadata: name, format, save path, texture resolution, element/texture/animation counts, current tab. Useful for diagnostics.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_project_state",
+        "definitions": {
+          "get_project_state": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "open_project_file",
+      "title": "Open Project File",
+      "description": "Load an existing .bbmodel from disk into the running Blockbench instance, replacing the currently open project. Mirror of `save_project_silent` — handles both LZUTF8-compressed and plain-JSON .bbmodel files. Use this to iterate on previously saved assets without manual File→Open.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/open_project_file",
+        "definitions": {
+          "open_project_file": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Absolute filesystem path to a .bbmodel file. Loads it as the active project, replacing any currently open project's contents.",
+                "markdownDescription": "Absolute filesystem path to a .bbmodel file. Loads it as the active project, replacing any currently open project's contents."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "export_texture_to_png",
+      "title": "Export Texture to PNG",
+      "description": "Write a single project texture to disk as a standalone PNG. Reads the texture's composited canvas (so layered textures are flattened on export). Use this to bake an in-Blockbench atlas back out to disk for Godot import.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/export_texture_to_png",
+        "definitions": {
+          "export_texture_to_png": {
+            "type": "object",
+            "properties": {
+              "texture_id": {
+                "type": "string",
+                "description": "Texture UUID, name, or numeric id to export.",
+                "markdownDescription": "Texture UUID, name, or numeric id to export."
+              },
+              "path": {
+                "type": "string",
+                "description": "Absolute filesystem path to write the PNG to. Parent directory must exist.",
+                "markdownDescription": "Absolute filesystem path to write the PNG to. Parent directory must exist."
+              }
+            },
+            "required": [
+              "texture_id",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "install_plugin_from_path",
+      "title": "Install Plugin From Path",
+      "description": "Install or replace a Blockbench plugin from a local .js file with source='file'. Survives restarts (unlike URL-source which auto-redownloads). Use to hot-swap fork builds without UI clicks: after `bun run build`, call this with the dist/mcp.js path. CAVEAT: replacing the running MCP plugin causes a brief MCP server disconnect (~200 ms-1 s) — reconnect via /mcp afterwards.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/install_plugin_from_path",
+        "definitions": {
+          "install_plugin_from_path": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Absolute filesystem path to the plugin's compiled .js file (e.g. the fork's dist/mcp.js). The plugin is registered with source='file' so future Blockbench restarts won't auto-overwrite it from a URL source.",
+                "markdownDescription": "Absolute filesystem path to the plugin's compiled .js file (e.g. the fork's dist/mcp.js). The plugin is registered with source='file' so future Blockbench restarts won't auto-overwrite it from a URL source."
+              },
+              "plugin_id": {
+                "type": "string",
+                "description": "Optional plugin id. If omitted, derived from the filename (e.g. 'mcp.js' → 'mcp'). For replacing the MCP plugin itself, pass 'mcp' or omit.",
+                "markdownDescription": "Optional plugin id. If omitted, derived from the filename (e.g. 'mcp.js' → 'mcp'). For replacing the MCP plugin itself, pass 'mcp' or omit."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "mirror_elements",
+      "title": "Mirror Elements",
+      "description": "Mirror elements across an axis. Saves token + ensures geometric symmetry for paired weapon/character parts. With duplicate=true, creates a mirrored copy; with duplicate=false, flips in-place.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/mirror_elements",
+        "definitions": {
+          "mirror_elements": {
+            "type": "object",
+            "properties": {
+              "axis": {
+                "type": "string",
+                "enum": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "description": "Axis to mirror across (world axis through origin).",
+                "markdownDescription": "Axis to mirror across (world axis through origin)."
+              },
+              "element_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Element UUIDs or names to mirror. If omitted, mirrors current selection.",
+                "markdownDescription": "Element UUIDs or names to mirror. If omitted, mirrors current selection."
+              },
+              "duplicate": {
+                "type": "boolean",
+                "default": true,
+                "description": "If true, duplicates the elements before mirroring (keeps both halves). If false, mirrors in-place.",
+                "markdownDescription": "If true, duplicates the elements before mirroring (keeps both halves). If false, mirrors in-place."
+              }
+            },
+            "required": [
+              "axis"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "set_origin",
+      "title": "Set Origin",
+      "description": "Set or recalculate the pivot point of an element. Critical for animations — wrong origin = rotation pivots from world center instead of joint.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/set_origin",
+        "definitions": {
+          "set_origin": {
+            "type": "object",
+            "properties": {
+              "element_id": {
+                "type": "string",
+                "description": "Cube/Mesh UUID or name.",
+                "markdownDescription": "Cube/Mesh UUID or name."
+              },
+              "origin": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "geometry_center",
+                      "world_origin",
+                      "parent_group"
+                    ]
+                  }
+                ],
+                "description": "Either explicit [x,y,z] coords, or one of: 'geometry_center' (center of element bounds), 'world_origin' ([0,0,0]), 'parent_group' (the parent group's origin).",
+                "markdownDescription": "Either explicit [x,y,z] coords, or one of: 'geometry_center' (center of element bounds), 'world_origin' ([0,0,0]), 'parent_group' (the parent group's origin)."
+              }
+            },
+            "required": [
+              "element_id",
+              "origin"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "add_reference_image",
+      "title": "Add Reference Image",
+      "description": "Add a reference image to the viewport as a backdrop plane. Useful for matching proportions to concept art / screenshot.",
+      "status": "experimental",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/add_reference_image",
+        "definitions": {
+          "add_reference_image": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Absolute filesystem path to a PNG/JPG image.",
+                "markdownDescription": "Absolute filesystem path to a PNG/JPG image."
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "default": [
+                  0,
+                  0,
+                  0
+                ],
+                "description": "World-space [x, y, z] position to place the image plane.",
+                "markdownDescription": "World-space [x, y, z] position to place the image plane."
+              },
+              "scale": {
+                "type": "number",
+                "default": 1,
+                "description": "Image scale multiplier.",
+                "markdownDescription": "Image scale multiplier."
+              },
+              "axis": {
+                "type": "string",
+                "enum": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "default": "z",
+                "description": "Axis the reference image plane faces. 'z' = front view, 'x' = side view, 'y' = top view.",
+                "markdownDescription": "Axis the reference image plane faces. 'z' = front view, 'x' = side view, 'y' = top view."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "convert_project",
+      "title": "Convert Project",
+      "description": "Convert the current project to a different format (e.g. free → bedrock_block). May lose format-specific data.",
+      "status": "experimental",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/convert_project",
+        "definitions": {
+          "convert_project": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "description": "Target format ID from Blockbench's Formats registry (e.g. 'free', 'bedrock_block', 'modded_entity', 'java_block').",
+                "markdownDescription": "Target format ID from Blockbench's Formats registry (e.g. 'free', 'bedrock_block', 'modded_entity', 'java_block')."
+              }
+            },
+            "required": [
+              "format"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "mesh_bevel_edge",
+      "title": "Bevel Edge",
+      "description": "Bevel selected mesh edges. Adds a chamfer of given width.",
+      "status": "experimental",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/mesh_bevel_edge",
+        "definitions": {
+          "mesh_bevel_edge": {
+            "type": "object",
+            "properties": {
+              "mesh_id": {
+                "type": "string",
+                "description": "Mesh UUID or name.",
+                "markdownDescription": "Mesh UUID or name."
+              },
+              "edge_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Edge keys (Mesh stores edges as 'vertexA_vertexB' strings) to bevel.",
+                "markdownDescription": "Edge keys (Mesh stores edges as 'vertexA_vertexB' strings) to bevel."
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10,
+                "default": 0.5,
+                "description": "Bevel width in units.",
+                "markdownDescription": "Bevel width in units."
+              }
+            },
+            "required": [
+              "mesh_id",
+              "edge_keys"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "mesh_inset_face",
+      "title": "Inset Face",
+      "description": "Inset selected mesh faces by the given distance.",
+      "status": "experimental",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/mesh_inset_face",
+        "definitions": {
+          "mesh_inset_face": {
+            "type": "object",
+            "properties": {
+              "mesh_id": {
+                "type": "string",
+                "description": "Mesh UUID or name.",
+                "markdownDescription": "Mesh UUID or name."
+              },
+              "face_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Face keys to inset.",
+                "markdownDescription": "Face keys to inset."
+              },
+              "inset": {
+                "type": "number",
+                "minimum": 0.01,
+                "maximum": 10,
+                "default": 0.5,
+                "description": "Inset distance in units.",
+                "markdownDescription": "Inset distance in units."
+              }
+            },
+            "required": [
+              "mesh_id",
+              "face_keys"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "mesh_loop_cut",
+      "title": "Loop Cut",
+      "description": "Loop-cut a mesh face into N strips.",
+      "status": "experimental",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/mesh_loop_cut",
+        "definitions": {
+          "mesh_loop_cut": {
+            "type": "object",
+            "properties": {
+              "mesh_id": {
+                "type": "string",
+                "description": "Mesh UUID or name.",
+                "markdownDescription": "Mesh UUID or name."
+              },
+              "face_key": {
+                "type": "string",
+                "description": "Face key on the mesh to start the loop cut from.",
+                "markdownDescription": "Face key on the mesh to start the loop cut from."
+              },
+              "cuts": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10,
+                "default": 1,
+                "description": "Number of cuts to make in the loop.",
+                "markdownDescription": "Number of cuts to make in the loop."
+              }
+            },
+            "required": [
+              "mesh_id",
+              "face_key"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "align_elements",
+      "title": "Align Elements",
+      "description": "Align two or more elements along an axis (min/center/max bounds).",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/align_elements",
+        "definitions": {
+          "align_elements": {
+            "type": "object",
+            "properties": {
+              "element_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 2,
+                "description": "Two or more cube/mesh UUIDs or names.",
+                "markdownDescription": "Two or more cube/mesh UUIDs or names."
+              },
+              "axis": {
+                "type": "string",
+                "enum": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "description": "Axis to align along.",
+                "markdownDescription": "Axis to align along."
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "min",
+                  "center",
+                  "max"
+                ],
+                "description": "min: align to lowest bounds, center: align to middle, max: align to highest bounds.",
+                "markdownDescription": "min: align to lowest bounds, center: align to middle, max: align to highest bounds."
+              }
+            },
+            "required": [
+              "element_ids",
+              "axis",
+              "mode"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "distribute_elements",
+      "title": "Distribute Elements",
+      "description": "Distribute three or more elements evenly along an axis.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/distribute_elements",
+        "definitions": {
+          "distribute_elements": {
+            "type": "object",
+            "properties": {
+              "element_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 3,
+                "description": "Three or more cube/mesh UUIDs or names.",
+                "markdownDescription": "Three or more cube/mesh UUIDs or names."
+              },
+              "axis": {
+                "type": "string",
+                "enum": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "description": "Axis to distribute along.",
+                "markdownDescription": "Axis to distribute along."
+              }
+            },
+            "required": [
+              "element_ids",
+              "axis"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "set_group_visibility",
+      "title": "Set Group Visibility",
+      "description": "Show or hide a group.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/set_group_visibility",
+        "definitions": {
+          "set_group_visibility": {
+            "type": "object",
+            "properties": {
+              "group_id": {
+                "type": "string",
+                "description": "Group UUID or name.",
+                "markdownDescription": "Group UUID or name."
+              },
+              "visible": {
+                "type": "boolean",
+                "description": "True to show, false to hide.",
+                "markdownDescription": "True to show, false to hide."
+              }
+            },
+            "required": [
+              "group_id",
+              "visible"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "lock_group",
+      "title": "Lock Group",
+      "description": "Lock or unlock a group (prevents accidental edits to its children).",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/lock_group",
+        "definitions": {
+          "lock_group": {
+            "type": "object",
+            "properties": {
+              "group_id": {
+                "type": "string",
+                "description": "Group UUID or name.",
+                "markdownDescription": "Group UUID or name."
+              },
+              "locked": {
+                "type": "boolean",
+                "description": "True to lock (prevent edits), false to unlock.",
+                "markdownDescription": "True to lock (prevent edits), false to unlock."
+              }
+            },
+            "required": [
+              "group_id",
+              "locked"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "select_by_pattern",
+      "title": "Select by Pattern",
+      "description": "Select all elements whose name matches a regex pattern. Returns the list of matched UUIDs.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/select_by_pattern",
+        "definitions": {
+          "select_by_pattern": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Regex pattern to match against element names.",
+                "markdownDescription": "Regex pattern to match against element names."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "cubes",
+                  "meshes",
+                  "groups"
+                ],
+                "default": "all",
+                "description": "Element type to filter.",
+                "markdownDescription": "Element type to filter."
+              }
+            },
+            "required": [
+              "pattern"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "read_setting",
+      "title": "Read Setting",
+      "description": "Read a Blockbench setting by key. Returns the current value as a string.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/read_setting",
+        "definitions": {
+          "read_setting": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "Blockbench setting key (e.g. 'autosave_interval', 'export_compressed', 'theme').",
+                "markdownDescription": "Blockbench setting key (e.g. 'autosave_interval', 'export_compressed', 'theme')."
+              }
+            },
+            "required": [
+              "key"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "write_setting",
+      "title": "Write Setting",
+      "description": "Write a Blockbench setting. Useful for changing autosave_interval, theme, default formats, etc. without going through the UI.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/write_setting",
+        "definitions": {
+          "write_setting": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "Blockbench setting key.",
+                "markdownDescription": "Blockbench setting key."
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ],
+                "description": "New value for the setting.",
+                "markdownDescription": "New value for the setting."
+              }
+            },
+            "required": [
+              "key",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "bind_mesh_face_textures",
+      "title": "Bind Mesh Face Textures",
+      "description": "Bind a texture to mesh faces. Workaround for upstream `place_mesh` and `apply_texture` not setting `face.texture` on mesh elements (only sets UV). Without binding, mesh faces render as the untextured pink/cyan pattern. Pass face_keys=null to bind every face.",
+      "status": "stable",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/bind_mesh_face_textures",
+        "definitions": {
+          "bind_mesh_face_textures": {
+            "type": "object",
+            "properties": {
+              "mesh_id": {
+                "type": "string",
+                "description": "Mesh UUID or name.",
+                "markdownDescription": "Mesh UUID or name."
+              },
+              "texture": {
+                "type": "string",
+                "description": "Texture UUID, name, or id to bind to the mesh's faces.",
+                "markdownDescription": "Texture UUID, name, or id to bind to the mesh's faces."
+              },
+              "face_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Specific face keys to bind. If omitted, binds ALL faces of the mesh.",
+                "markdownDescription": "Specific face keys to bind. If omitted, binds ALL faces of the mesh."
+              }
+            },
+            "required": [
+              "mesh_id",
+              "texture"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "create_locator",
+      "title": "Create Locator",
+      "description": "Create a Locator (named attachment point) in the outliner. Locators export as named nodes in glTF and become Marker3D-equivalents in Godot — use them for muzzle points, ejection ports, footstep origins, particle origins, audio emitters, etc.",
+      "status": "stable",
+      "category": "Attachment Points (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/create_locator",
+        "definitions": {
+          "create_locator": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Locator name. Conventionally lowercase_snake_case (e.g. 'muzzle_flash', 'ejection_port'). Becomes the node name in glTF export.",
+                "markdownDescription": "Locator name. Conventionally lowercase_snake_case (e.g. 'muzzle_flash', 'ejection_port'). Becomes the node name in glTF export."
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Locator position [x, y, z] in project coordinates.",
+                "markdownDescription": "Locator position [x, y, z] in project coordinates."
+              },
+              "parent": {
+                "type": "string",
+                "default": "root",
+                "description": "Parent group/bone UUID or name. Defaults to 'root'. For viewmodel attachments pass the relevant bone (e.g. 'wpn_barrel').",
+                "markdownDescription": "Parent group/bone UUID or name. Defaults to 'root'. For viewmodel attachments pass the relevant bone (e.g. 'wpn_barrel')."
+              }
+            },
+            "required": [
+              "name",
+              "position"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "create_null_object",
+      "title": "Create Null Object",
+      "description": "Create a NullObject (invisible rigging node) in the outliner. Primary use is as an IK target for hand/foot constraints on rigged characters. Pass `ik_target` to wire it to a bone's IK chain.",
+      "status": "stable",
+      "category": "Attachment Points (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/create_null_object",
+        "definitions": {
+          "create_null_object": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "NullObject name. Conventionally describes the IK role (e.g. 'ik_target_hand_l', 'ik_target_foot_r').",
+                "markdownDescription": "NullObject name. Conventionally describes the IK role (e.g. 'ik_target_hand_l', 'ik_target_foot_r')."
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "NullObject position [x, y, z] in project coordinates.",
+                "markdownDescription": "NullObject position [x, y, z] in project coordinates."
+              },
+              "parent": {
+                "type": "string",
+                "default": "root",
+                "description": "Parent group/bone UUID or name. Defaults to 'root'.",
+                "markdownDescription": "Parent group/bone UUID or name. Defaults to 'root'."
+              },
+              "ik_target": {
+                "type": "string",
+                "description": "Optional UUID/name of the bone this NullObject should serve as IK target for. Wires the IK chain endpoint.",
+                "markdownDescription": "Optional UUID/name of the bone this NullObject should serve as IK target for. Wires the IK chain endpoint."
+              },
+              "lock_ik_target_rotation": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, the IK target's rotation is locked to its rest orientation (free chain otherwise).",
+                "markdownDescription": "If true, the IK target's rotation is locked to its rest orientation (free chain otherwise)."
+              }
+            },
+            "required": [
+              "name",
+              "position"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_selection",
+      "title": "Get Current Selection",
+      "description": "Read the current Blockbench selection across all levels: outliner elements (cubes, meshes, groups, locators, null objects), mesh sub-selections (vertices/edges/faces per mesh), active group, active animation, current mode and tool. Read-only diagnostic for the agent-user handoff workflow ('paint the selected face red', 'extrude the picked edge').",
+      "status": "stable",
+      "category": "Selection (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_selection",
+        "definitions": {
+          "get_selection": {
+            "type": "object",
+            "properties": {},
             "additionalProperties": false
           }
         },

@@ -144,7 +144,7 @@ export const silentToolDocs: ToolSpec[] = [
   {
     name: "export_gltf_silent",
     description:
-      "Export the current project as glTF/GLB to a specific path WITHOUT a dialog. Replaces `trigger_action(export_gltf)` for non-interactive workflows.",
+      "Export the current project as glTF/GLB to a specific path WITHOUT a dialog. Replaces `trigger_action(export_gltf)` for non-interactive workflows. Convenience wrapper over the glTF codec with typed `embed_textures` / `animations` options; for arbitrary formats use the general `export_model` tool.",
     annotations: {
       title: "Export glTF Silently",
       destructiveHint: false,
