@@ -21,6 +21,8 @@ import { registerSilentTools } from "./tools/silent";
 import { registerWorkflowExtraTools } from "./tools/workflow_extra";
 import { registerAttachmentTools } from "./tools/attachments";
 import { registerSelectionTools } from "./tools/selection";
+import { registerHistoryTools } from "./tools/history";
+import { registerExportTools } from "./tools/export";
 
 // Core resource registrations
 import { registerValidatorResources } from "./resources/validator";
@@ -38,6 +40,8 @@ const registrationFunctions = [
   registerCameraTools,
   registerCubesTools,
   registerElementTools,
+  registerExportTools,
+  registerHistoryTools,
   registerImportTools,
   registerMaterialInstanceTools,
   registerMeshTools,

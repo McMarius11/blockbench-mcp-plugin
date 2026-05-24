@@ -158,6 +158,7 @@ class SessionManager {
     if (session) {
       session.lastPongAt = new Date();
       session.failedPings = 0;
+      // Reset inactivity timeout — a pong confirms the client is alive
       this.resetTimeout(session);
     }
   }
