@@ -2,7 +2,7 @@
 
 Things that don't work, are deferred, or carry a caveat in this fork. Honest list — not blockers for the boomer-shooter pipeline this fork was built for, but worth knowing before you hit them.
 
-Last audit: 2026-05-06.
+Last audit: 2026-05-25 (post upstream-sync merge to v1.6.0).
 
 ---
 
@@ -16,7 +16,7 @@ Last audit: 2026-05-06.
 | 4 | low | architectural | [Arbitrary OS-native dialogs cannot be auto-confirmed](#4-arbitrary-os-native-dialogs-cannot-be-auto-confirmed) |
 | 5 | medium | infrastructure | [No CI/CD pipeline (manual smoke test only)](#5-no-cicd-pipeline-manual-smoke-test-only) |
 | 6 | medium | infrastructure | [Compatibility tested only on Blockbench 5.1.x](#6-compatibility-tested-only-on-blockbench-51x) |
-| 7 | low | code quality | [`@ts-ignore` density (~40 sites)](#7-ts-ignore-density) |
+| 7 | low | code quality | [`@ts-ignore` density (254 sites) + type debt](#7-ts-ignore-density--pre-existing-type-debt) |
 | 8 | low | code quality | [Bundle size 587 KB — not tree-shaken](#8-bundle-size) |
 | 9 | low | code quality | [EXPERIMENTAL tools not individually re-validated](#9-experimental-tools-not-individually-re-validated) |
 
@@ -115,7 +115,15 @@ Cannot subscribe to Blockbench events from the agent (e.g. "notify me when the u
 
 **Root cause**
 
-The MCP protocol is request/response by design. Server-to-client streaming requires SSE or WebSocket transport with explicit `notifications/*` plumbing. The current `StreamableHTTPServerTransport` runs with `enableJsonResponse: true` (no SSE).
+The MCP protocol is request/response by design. Server-to-client streaming requires SSE (or WebSocket) transport with explicit `notifications/*` plumbing.
+
+> **Updated 2026-05-25:** The upstream-sync merge (v1.6.0) replaced the old
+> `StreamableHTTPServerTransport` (`enableJsonResponse: true`, no SSE) with
+> `WebStandardStreamableHTTPServerTransport`, which **does** open SSE streams
+> (see `server/net.ts` — `sseHeartbeatIntervalMs`, SSE comment heartbeats).
+> The transport-level blocker is therefore **gone**; what remains is wiring
+> Blockbench event subscriptions to MCP `notifications/*` messages. This item
+> is now a feature-implementation gap rather than an architectural limitation.
 
 **Impact**
 
@@ -127,7 +135,7 @@ Poll `get_project_state` between operations to detect changes (e.g. cube count d
 
 **Path to fix**
 
-Switch transport to SSE-enabled mode and add per-event MCP `notifications/*` handlers. ~1 day of work for a thin MVP. Deferred until a concrete use case emerges.
+Now that the transport supports SSE, add per-event MCP `notifications/*` handlers that subscribe to Blockbench events (`Blockbench.on(...)`). ~0.5 day for a thin MVP (e.g. "notify on save"). Deferred until a concrete use case emerges.
 
 ---
 
@@ -221,19 +229,46 @@ Set up a multi-version test rig (Blockbench 4.12, 5.0.6, 5.1.4, latest) and run 
 
 Code-quality and optimisation items I could fix but the value-per-hour is low and there's no concrete bug driving them.
 
-### 7. `@ts-ignore` density
+### 7. `@ts-ignore` density + pre-existing type debt
 
 **Symptom**
 
-~40 `@ts-ignore` comments across `server/tools/*.ts` to access Blockbench globals (`Project`, `Cube`, `Mesh`, `Plugins`, etc.) that aren't fully typed in `blockbench-types`.
+**254** `@ts-ignore` comments across `server/tools/*.ts` (top offenders: `silent.ts` 62, `workflow_extra.ts` 48, `animation.ts` 37, `hytale.ts` 31, `paint.ts` 23, `selection.ts` 20).
+
+**Root cause (corrected 2026-05-25)**
+
+An earlier audit assumed the cause was *undeclared* Blockbench globals. That was
+wrong: `blockbench-types` **does** declare the globals (`Project`, `Cube`, `Mesh`,
+`Undo`, `Codecs`, `requireNativeModule`, `LZUTF8`, `StateMemory`, `newProject`, …).
+The real cause is **property/signature gaps** on otherwise-typed classes —
+`Project.selected_elements`, `Project.mesh_selection`, codec method shapes, etc.
+So a `globalThis as any` re-export module would **not** help (and re-exporting a
+mutable global like `Project` as a `const` would freeze a stale/null reference).
+
+Running `bun run typecheck` (added 2026-05-25 — `tsc --noEmit` with a 6 GB heap
+to avoid the OOM that plain `tsc` hits) reveals a **baseline of ~168 type errors
+that `@ts-ignore` does *not* even cover** — mostly `TS2339` (property doesn't
+exist, 70×) and `TS7006` (implicit-any params, 43×); only **3** are `TS2304`
+"cannot find name". These are invisible in normal use because the Bun bundler
+does not type-check and there was previously no `tsc` step.
 
 **Why deferred**
 
-Each ignore bypasses the type-checker, which is mildly fragile but not actively misleading. A `lib/blockbench-globals.ts` wrapper module that re-exports them with relaxed typing would reduce density to ~5-10 sites. ~30-45 min refactor.
+Bulk `@ts-ignore` removal is **not** a safe quick win: removing them surfaces the
+254 suppressed errors *on top of* the 168 existing ones, and there's no clean
+typed accessor that fixes them without per-site work. Real reduction means
+`declare module "blockbench-types"` augmentation for the hot missing properties +
+typing the callback params — a multi-hour effort, not 30-45 min.
 
 **Path to fix**
 
-Create `lib/blockbench-globals.ts` with `globalThis as any` re-exports. Replace `// @ts-ignore` + global access with `import { Project, Cube, ... } from "@/lib/blockbench-globals"`.
+1. (done) `bun run typecheck` script so a working type-checker exists.
+2. Triage the 168 baseline: augment `blockbench-types` (module augmentation) for
+   the most-hit missing properties; add explicit param types for the `TS7006` map
+   callbacks.
+3. Only then remove the now-redundant `@ts-ignore` comments, re-running
+   `bun run typecheck` after each batch to confirm the count drops without
+   surfacing new errors.
 
 ---
 
@@ -241,7 +276,7 @@ Create `lib/blockbench-globals.ts` with `globalThis as any` re-exports. Replace 
 
 **Symptom**
 
-`dist/mcp.js` is 587 KB minified. Includes Hytale tools (~50 KB) and some upstream features the boomer-shooter pipeline doesn't use.
+`dist/mcp.js` is ~602 KB minified (up from 587 KB after the v1.6.0 upstream-sync merge added the history/export tools, prompt-loader, resource-URI, and i18n). Includes Hytale tools (~50 KB) and some upstream features the boomer-shooter pipeline doesn't use.
 
 **Why deferred**
 
@@ -277,6 +312,9 @@ These were on the list earlier in the audit and are now fully resolved:
 - `save_project_silent` silently fell back to plain JSON when `compressed=true` and LZUTF8 was missing — fixed in `b97289e` (now throws clearly)
 - `get_selection` bucketing broke on minified builds (`constructor.name === "rc"`) — fixed in `d0453a3` via instanceof checks
 - `select_mesh_elements` used `?? {...}` fallback that silently wrote to a local object — refactored to official `getSelected*(true)` API in `764750a` (mitigates the persistence issue documented as #1; doesn't fully solve it because the cross-request wipe is Blockbench-internal)
+- **(v1.6.0 upstream-sync merge)** Upstream's `export_model` did not `await` async `codec.compile()` — for glTF/GLB (async in Blockbench 5.x) it wrote `[object Promise]` to disk. Fixed by awaiting the Promise (same pattern the fork already used in `export_gltf_silent`); verified live against Blockbench 5.1.4.
+- **(v1.6.0 upstream-sync merge)** Three `undo`/`redo`/`get_selection` tool-name collisions between fork and upstream would have thrown on plugin load (`createTool` rejects duplicates). Resolved by keeping the fork's superset `get_selection` and upstream's richer `history` module's `undo`/`redo`.
+- **(v1.6.0 upstream-sync merge)** Doc gap: the 4 fork tool modules (`silent`, `workflow_extra`, `attachments`, `selection`, ~28 tools) were missing from `build/docs-manifest.ts` and absent from the generated docs site. Added — docs now cover all tools.
 
 ---
 

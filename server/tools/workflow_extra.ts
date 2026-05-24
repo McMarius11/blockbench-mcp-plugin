@@ -91,17 +91,6 @@ export const addReferenceImageParameters = z.object({
     ),
 });
 
-export const undoRedoParameters = z.object({
-  steps: z
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .optional()
-    .default(1)
-    .describe("Number of history steps to undo/redo."),
-});
-
 export const convertProjectParameters = z.object({
   format: z
     .string()
@@ -271,20 +260,6 @@ export const workflowExtraToolDocs: ToolSpec[] = [
     annotations: { title: "Add Reference Image", destructiveHint: false, openWorldHint: true },
     parameters: addReferenceImageParameters,
     status: STATUS_EXPERIMENTAL,
-  },
-  {
-    name: "undo",
-    description: "Undo the last N edit-history steps.",
-    annotations: { title: "Undo", destructiveHint: true, openWorldHint: false },
-    parameters: undoRedoParameters,
-    status: STATUS_STABLE,
-  },
-  {
-    name: "redo",
-    description: "Redo the last N undone edit-history steps.",
-    annotations: { title: "Redo", destructiveHint: true, openWorldHint: false },
-    parameters: undoRedoParameters,
-    status: STATUS_STABLE,
   },
   {
     name: "convert_project",
@@ -490,40 +465,9 @@ export function registerWorkflowExtraTools() {
     },
   }, workflowExtraToolDocs[2].status);
 
-  // ---- undo / redo ----
+  // ---- convert_project ----
   createTool(workflowExtraToolDocs[3].name, {
     ...workflowExtraToolDocs[3],
-    async execute({ steps }: any) {
-      // @ts-ignore - Undo is a Blockbench global
-      if (typeof Undo === "undefined") throw new Error("Undo not available.");
-      let count = 0;
-      for (let i = 0; i < steps; i++) {
-        // @ts-ignore
-        if (Undo.undo() !== false) count++;
-        else break;
-      }
-      return `Undone ${count} step(s).`;
-    },
-  }, workflowExtraToolDocs[3].status);
-
-  createTool(workflowExtraToolDocs[4].name, {
-    ...workflowExtraToolDocs[4],
-    async execute({ steps }: any) {
-      // @ts-ignore
-      if (typeof Undo === "undefined") throw new Error("Redo not available.");
-      let count = 0;
-      for (let i = 0; i < steps; i++) {
-        // @ts-ignore
-        if (Undo.redo() !== false) count++;
-        else break;
-      }
-      return `Redone ${count} step(s).`;
-    },
-  }, workflowExtraToolDocs[4].status);
-
-  // ---- convert_project ----
-  createTool(workflowExtraToolDocs[5].name, {
-    ...workflowExtraToolDocs[5],
     async execute({ format }: any) {
       ensureProject();
       // @ts-ignore - Formats is a Blockbench global
@@ -539,11 +483,11 @@ export function registerWorkflowExtraTools() {
       }
       return `Converted project to ${format}.`;
     },
-  }, workflowExtraToolDocs[5].status);
+  }, workflowExtraToolDocs[3].status);
 
   // ---- mesh_bevel_edge ----
-  createTool(workflowExtraToolDocs[6].name, {
-    ...workflowExtraToolDocs[6],
+  createTool(workflowExtraToolDocs[4].name, {
+    ...workflowExtraToolDocs[4],
     async execute({ mesh_id, edge_keys, width }: any) {
       ensureProject();
       const mesh = findElement(mesh_id);
@@ -559,11 +503,11 @@ export function registerWorkflowExtraTools() {
       }
       throw new Error("bevel_edges action not available.");
     },
-  }, workflowExtraToolDocs[6].status);
+  }, workflowExtraToolDocs[4].status);
 
   // ---- mesh_inset_face ----
-  createTool(workflowExtraToolDocs[7].name, {
-    ...workflowExtraToolDocs[7],
+  createTool(workflowExtraToolDocs[5].name, {
+    ...workflowExtraToolDocs[5],
     async execute({ mesh_id, face_keys, inset }: any) {
       ensureProject();
       const mesh = findElement(mesh_id);
@@ -578,11 +522,11 @@ export function registerWorkflowExtraTools() {
       }
       throw new Error("inset_face action not available.");
     },
-  }, workflowExtraToolDocs[7].status);
+  }, workflowExtraToolDocs[5].status);
 
   // ---- mesh_loop_cut ----
-  createTool(workflowExtraToolDocs[8].name, {
-    ...workflowExtraToolDocs[8],
+  createTool(workflowExtraToolDocs[6].name, {
+    ...workflowExtraToolDocs[6],
     async execute({ mesh_id, face_key, cuts }: any) {
       ensureProject();
       const mesh = findElement(mesh_id);
@@ -597,11 +541,11 @@ export function registerWorkflowExtraTools() {
       }
       throw new Error("loop_cut action not available.");
     },
-  }, workflowExtraToolDocs[8].status);
+  }, workflowExtraToolDocs[6].status);
 
   // ---- align_elements ----
-  createTool(workflowExtraToolDocs[9].name, {
-    ...workflowExtraToolDocs[9],
+  createTool(workflowExtraToolDocs[7].name, {
+    ...workflowExtraToolDocs[7],
     async execute({ element_ids, axis, mode }: any) {
       ensureProject();
       const els = element_ids.map(findElement).filter(Boolean);
@@ -635,11 +579,11 @@ export function registerWorkflowExtraTools() {
       Canvas.updateAll();
       return `Aligned ${els.length} elements to ${mode} on ${axis}.`;
     },
-  }, workflowExtraToolDocs[9].status);
+  }, workflowExtraToolDocs[7].status);
 
   // ---- distribute_elements ----
-  createTool(workflowExtraToolDocs[10].name, {
-    ...workflowExtraToolDocs[10],
+  createTool(workflowExtraToolDocs[8].name, {
+    ...workflowExtraToolDocs[8],
     async execute({ element_ids, axis }: any) {
       ensureProject();
       const els = element_ids.map(findElement).filter(Boolean);
@@ -662,11 +606,11 @@ export function registerWorkflowExtraTools() {
       Canvas.updateAll();
       return `Distributed ${els.length} elements evenly on ${axis}.`;
     },
-  }, workflowExtraToolDocs[10].status);
+  }, workflowExtraToolDocs[8].status);
 
   // ---- set_group_visibility ----
-  createTool(workflowExtraToolDocs[11].name, {
-    ...workflowExtraToolDocs[11],
+  createTool(workflowExtraToolDocs[9].name, {
+    ...workflowExtraToolDocs[9],
     async execute({ group_id, visible }: any) {
       ensureProject();
       // @ts-ignore - Group is a Blockbench global
@@ -679,11 +623,11 @@ export function registerWorkflowExtraTools() {
       Canvas.updateAll();
       return `Set ${grp.name} visible=${visible}.`;
     },
-  }, workflowExtraToolDocs[11].status);
+  }, workflowExtraToolDocs[9].status);
 
   // ---- lock_group ----
-  createTool(workflowExtraToolDocs[12].name, {
-    ...workflowExtraToolDocs[12],
+  createTool(workflowExtraToolDocs[10].name, {
+    ...workflowExtraToolDocs[10],
     async execute({ group_id, locked }: any) {
       ensureProject();
       // @ts-ignore
@@ -692,11 +636,11 @@ export function registerWorkflowExtraTools() {
       grp.locked = locked;
       return `Set ${grp.name} locked=${locked}.`;
     },
-  }, workflowExtraToolDocs[12].status);
+  }, workflowExtraToolDocs[10].status);
 
   // ---- select_by_pattern ----
-  createTool(workflowExtraToolDocs[13].name, {
-    ...workflowExtraToolDocs[13],
+  createTool(workflowExtraToolDocs[11].name, {
+    ...workflowExtraToolDocs[11],
     async execute({ pattern, type }: any) {
       ensureProject();
       const re = new RegExp(pattern);
@@ -724,11 +668,11 @@ export function registerWorkflowExtraTools() {
       }
       return JSON.stringify(results.map((r: any) => ({ name: r.name, uuid: r.uuid, type: r.type || "group" })));
     },
-  }, workflowExtraToolDocs[13].status);
+  }, workflowExtraToolDocs[11].status);
 
   // ---- read_setting ----
-  createTool(workflowExtraToolDocs[14].name, {
-    ...workflowExtraToolDocs[14],
+  createTool(workflowExtraToolDocs[12].name, {
+    ...workflowExtraToolDocs[12],
     async execute({ key }: any) {
       // @ts-ignore - settings is a Blockbench global
       if (typeof settings === "undefined") throw new Error("settings not available.");
@@ -738,11 +682,11 @@ export function registerWorkflowExtraTools() {
       // @ts-ignore
       return JSON.stringify({ key, value: s.value, type: s.type });
     },
-  }, workflowExtraToolDocs[14].status);
+  }, workflowExtraToolDocs[12].status);
 
   // ---- write_setting ----
-  createTool(workflowExtraToolDocs[15].name, {
-    ...workflowExtraToolDocs[15],
+  createTool(workflowExtraToolDocs[13].name, {
+    ...workflowExtraToolDocs[13],
     async execute({ key, value }: any) {
       // @ts-ignore
       if (typeof settings === "undefined") throw new Error("settings not available.");
@@ -755,15 +699,15 @@ export function registerWorkflowExtraTools() {
       if (typeof s.onChange === "function") s.onChange(value);
       return `Set ${key} = ${JSON.stringify(value)}.`;
     },
-  }, workflowExtraToolDocs[15].status);
+  }, workflowExtraToolDocs[13].status);
 
   // ---- bind_mesh_face_textures ----
   // Workaround for upstream bug: place_mesh and apply_texture both fail to set
   // face.texture on mesh elements. Without this binding, faces render as
   // Blockbench's untextured pink/cyan checker pattern. Equivalent to what
   // modify_cube_uv does for cubes.
-  createTool(workflowExtraToolDocs[16].name, {
-    ...workflowExtraToolDocs[16],
+  createTool(workflowExtraToolDocs[14].name, {
+    ...workflowExtraToolDocs[14],
     async execute({ mesh_id, texture, face_keys }: any) {
       ensureProject();
       const mesh = findElement(mesh_id);
@@ -808,5 +752,5 @@ export function registerWorkflowExtraTools() {
 
       return `Bound texture "${tex.name}" to ${bound} face(s) on mesh "${mesh.name}".`;
     },
-  }, workflowExtraToolDocs[16].status);
+  }, workflowExtraToolDocs[14].status);
 }

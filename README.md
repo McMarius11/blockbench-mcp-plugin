@@ -19,7 +19,6 @@ Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner
 | **UV editing** | `uv_island_transform` |
 | **Animation** | `manage_animations` |
 | **Selection inspection** | `get_selection` |
-| **History** | `undo`, `redo` |
 | **Project I/O** | `convert_project` |
 | **Layout** | `align_elements`, `distribute_elements`, `set_group_visibility`, `lock_group` |
 | **Selection / settings** | `select_by_pattern`, `read_setting`, `write_setting` |
@@ -89,7 +88,7 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 
 | Tool | Purpose |
 |---|---|
-| `undo(steps?)` / `redo(steps?)` | Programmatic history navigation |
+| `undo(steps?)` / `redo(steps?)` | Programmatic history navigation — **now provided by upstream's `history` module** (which also adds `get_undo_stack` and `save_checkpoint`); the fork's original implementation was dropped in favor of upstream's on the upstream-sync merge |
 | `convert_project(format)` | Switch project format (e.g. `free` ↔ `bedrock_block`) |
 | `add_reference_image(path, position?, scale?, axis?)` | Backdrop image for matching concept art |
 
