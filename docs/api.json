@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-05-25T08:42:27.832Z",
+  "generatedAt": "2026-05-25T09:13:42.304Z",
   "tools": [
     {
       "name": "place_cube",
@@ -2533,6 +2533,73 @@
             "required": [
               "texture"
             ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_element_info",
+      "title": "Get Element Info",
+      "description": "Returns full structured data for elements as JSON. Cubes: from/to, computed size, origin, rotation, inflate, box-UV settings, visibility/shade, and (by default) per-face uv/texture/rotation/tint/enabled. Meshes: origin/rotation, vertex & face counts, local bounding box, and optionally full vertices/faces. Groups: transform + child count. Scope via `ids` (specific elements), `group` (its descendants), `selected_only`, or omit all for the whole project. Read-only. Pair with `list_outline` for the hierarchy, or `find_elements_by_criteria` to get IDs first. This is the structured-dump primitive for offline analysis — use instead of `risky_eval`.",
+      "status": "stable",
+      "category": "Elements",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_element_info",
+        "definitions": {
+          "get_element_info": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Specific element IDs or names (cubes, meshes, or groups). Takes precedence over `group` and `selected_only`.",
+                "markdownDescription": "Specific element IDs or names (cubes, meshes, or groups). Takes precedence over `group` and `selected_only`."
+              },
+              "group": {
+                "type": "string",
+                "description": "UUID or name of a group — returns all of its descendant elements. Used when `ids` is omitted.",
+                "markdownDescription": "UUID or name of a group — returns all of its descendant elements. Used when `ids` is omitted."
+              },
+              "selected_only": {
+                "type": "boolean",
+                "default": false,
+                "description": "Return only the currently selected elements. Used when both `ids` and `group` are omitted. If everything is omitted, the whole project is returned.",
+                "markdownDescription": "Return only the currently selected elements. Used when both `ids` and `group` are omitted. If everything is omitted, the whole project is returned."
+              },
+              "include_groups": {
+                "type": "boolean",
+                "default": false,
+                "description": "Include group nodes (transform + child count) in broad scopes (group/selection/all). Groups named explicitly via `ids` are always included.",
+                "markdownDescription": "Include group nodes (transform + child count) in broad scopes (group/selection/all). Groups named explicitly via `ids` are always included."
+              },
+              "include_faces": {
+                "type": "boolean",
+                "default": true,
+                "description": "For cubes, include per-face data (uv, texture, rotation, tint, enabled). Set false for a lighter geometry-only dump.",
+                "markdownDescription": "For cubes, include per-face data (uv, texture, rotation, tint, enabled). Set false for a lighter geometry-only dump."
+              },
+              "include_mesh_geometry": {
+                "type": "boolean",
+                "default": false,
+                "description": "For meshes, include full vertices and faces. Off by default — meshes otherwise return counts + local bounding box only, since full vertex dumps can be large.",
+                "markdownDescription": "For meshes, include full vertices and faces. Off by default — meshes otherwise return counts + local bounding box only, since full vertex dumps can be large."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000,
+                "default": 1000,
+                "description": "Maximum number of elements to return.",
+                "markdownDescription": "Maximum number of elements to return."
+              }
+            },
             "additionalProperties": false
           }
         },

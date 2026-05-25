@@ -88,6 +88,57 @@ export const filterByMaterialParameters = z.object({
     ),
 });
 
+export const getElementInfoParameters = z.object({
+  ids: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Specific element IDs or names (cubes, meshes, or groups). Takes precedence over `group` and `selected_only`."
+    ),
+  group: z
+    .string()
+    .optional()
+    .describe(
+      "UUID or name of a group — returns all of its descendant elements. Used when `ids` is omitted."
+    ),
+  selected_only: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Return only the currently selected elements. Used when both `ids` and `group` are omitted. If everything is omitted, the whole project is returned."
+    ),
+  include_groups: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Include group nodes (transform + child count) in broad scopes (group/selection/all). Groups named explicitly via `ids` are always included."
+    ),
+  include_faces: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      "For cubes, include per-face data (uv, texture, rotation, tint, enabled). Set false for a lighter geometry-only dump."
+    ),
+  include_mesh_geometry: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "For meshes, include full vertices and faces. Off by default — meshes otherwise return counts + local bounding box only, since full vertex dumps can be large."
+    ),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(5000)
+    .optional()
+    .default(1000)
+    .describe("Maximum number of elements to return."),
+});
+
 export const addGroupParameters = z.object({
   name: z.string(),
   origin: vector3Schema,
@@ -216,6 +267,17 @@ export const elementToolDocs: ToolSpec[] = [
     parameters: filterByMaterialParameters,
     status: STATUS_STABLE,
   },
+  {
+    name: "get_element_info",
+    description:
+      "Returns full structured data for elements as JSON. Cubes: from/to, computed size, origin, rotation, inflate, box-UV settings, visibility/shade, and (by default) per-face uv/texture/rotation/tint/enabled. Meshes: origin/rotation, vertex & face counts, local bounding box, and optionally full vertices/faces. Groups: transform + child count. Scope via `ids` (specific elements), `group` (its descendants), `selected_only`, or omit all for the whole project. Read-only. Pair with `list_outline` for the hierarchy, or `find_elements_by_criteria` to get IDs first. This is the structured-dump primitive for offline analysis — use instead of `risky_eval`.",
+    annotations: {
+      title: "Get Element Info",
+      readOnlyHint: true,
+    },
+    parameters: getElementInfoParameters,
+    status: STATUS_STABLE,
+  },
 ];
 
 interface IElementMatch {
@@ -301,6 +363,112 @@ function safeCompileRegex(pattern: string | undefined): RegExp | null {
     );
     return null;
   }
+}
+
+function faceTextureName(face: {
+  texture?: unknown;
+  getTexture?: () => { name?: string } | null;
+}): string | null {
+  if (!face.texture) return null;
+  return face.getTexture?.()?.name ?? String(face.texture);
+}
+
+function serializeCube(cube: Cube, includeFaces: boolean): Record<string, unknown> {
+  // @ts-ignore - Blockbench Cube has more props than the type declares
+  const c = cube as any;
+  const rec: Record<string, unknown> = {
+    uuid: cube.uuid,
+    name: cube.name,
+    type: "cube",
+    parent: getParentName(cube),
+    from: cube.from,
+    to: cube.to,
+    size: cubeSize(cube),
+    origin: cube.origin,
+    rotation: cube.rotation,
+    inflate: c.inflate ?? 0,
+    box_uv: Boolean(c.box_uv),
+    uv_offset: c.uv_offset ?? [0, 0],
+    mirror_uv: Boolean(c.mirror_uv),
+    visibility: c.visibility !== false,
+    shade: c.shade !== false,
+  };
+  if (includeFaces) {
+    const faces: Record<string, unknown> = {};
+    for (const [key, face] of Object.entries(cube.faces ?? {})) {
+      const f = face as any;
+      faces[key] = {
+        uv: f.uv,
+        rotation: f.rotation ?? 0,
+        tint: f.tint ?? -1,
+        enabled: f.enabled !== false,
+        texture: faceTextureName(f),
+      };
+    }
+    rec.faces = faces;
+  }
+  return rec;
+}
+
+function serializeMesh(mesh: Mesh, includeGeometry: boolean): Record<string, unknown> {
+  const m = mesh as any;
+  const verts: Record<string, number[]> = m.vertices ?? {};
+  const faces: Record<string, unknown> = m.faces ?? {};
+  const vertexKeys = Object.keys(verts);
+
+  let bbox: { from: number[]; to: number[] } | null = null;
+  if (vertexKeys.length) {
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (const k of vertexKeys) {
+      const v = verts[k];
+      for (let i = 0; i < 3; i++) {
+        if (v[i] < min[i]) min[i] = v[i];
+        if (v[i] > max[i]) max[i] = v[i];
+      }
+    }
+    bbox = { from: min, to: max };
+  }
+
+  const rec: Record<string, unknown> = {
+    uuid: mesh.uuid,
+    name: mesh.name,
+    type: "mesh",
+    parent: getParentName(mesh),
+    origin: m.origin,
+    rotation: m.rotation,
+    vertex_count: vertexKeys.length,
+    face_count: Object.keys(faces).length,
+    bounding_box: bbox,
+  };
+  if (includeGeometry) {
+    rec.vertices = verts;
+    const faceOut: Record<string, unknown> = {};
+    for (const [key, face] of Object.entries(faces)) {
+      const f = face as any;
+      faceOut[key] = {
+        vertices: f.vertices,
+        uv: f.uv,
+        texture: faceTextureName(f),
+      };
+    }
+    rec.faces = faceOut;
+  }
+  return rec;
+}
+
+function serializeGroup(group: Group): Record<string, unknown> {
+  const g = group as any;
+  return {
+    uuid: group.uuid,
+    name: group.name,
+    type: "group",
+    parent: getParentName(group),
+    origin: g.origin,
+    rotation: g.rotation,
+    visibility: g.visibility !== false,
+    children_count: (group.children ?? []).length,
+  };
 }
 
 export function registerElementTools() {
@@ -706,4 +874,84 @@ export function registerElementTools() {
       );
     },
   }, elementToolDocs[7].status);
+
+  createTool(elementToolDocs[8].name, {
+    ...elementToolDocs[8],
+    async execute({
+      ids,
+      group,
+      selected_only,
+      include_groups,
+      include_faces,
+      include_mesh_geometry,
+      limit,
+    }) {
+      let scopeLabel: "ids" | "group" | "selection" | "all";
+      let candidates: Array<Cube | Mesh | Group>;
+
+      if (ids && ids.length) {
+        scopeLabel = "ids";
+        candidates = ids.map((id: string) => findElementOrThrow(id)) as Array<
+          Cube | Mesh | Group
+        >;
+      } else if (group) {
+        scopeLabel = "group";
+        // @ts-ignore - Group is a Blockbench global
+        const g = Group.all.find(
+          (x: Group) => x.uuid === group || x.name === group
+        );
+        if (!g) {
+          throw new Error(
+            `Group "${group}" not found. Use list_outline to see available groups.`
+          );
+        }
+        candidates = [
+          ...Cube.all.filter((c: Cube) => isDescendantOf(c, g)),
+          ...Mesh.all.filter((m: Mesh) => isDescendantOf(m, g)),
+          ...(include_groups
+            ? Group.all.filter((sg: Group) => sg !== g && isDescendantOf(sg, g))
+            : []),
+        ];
+      } else if (selected_only) {
+        scopeLabel = "selection";
+        candidates = [
+          ...Cube.selected,
+          ...Mesh.selected,
+          ...(include_groups
+            ? Group.all.filter((g: Group) => g.selected)
+            : []),
+        ];
+      } else {
+        scopeLabel = "all";
+        candidates = [
+          ...Cube.all,
+          ...Mesh.all,
+          ...(include_groups ? Group.all : []),
+        ];
+      }
+
+      const truncated = candidates.length > limit;
+      const elements = candidates.slice(0, limit).map((el) => {
+        if (el instanceof Cube) return serializeCube(el, include_faces);
+        if (el instanceof Mesh) return serializeMesh(el, include_mesh_geometry);
+        if (el instanceof Group) return serializeGroup(el);
+        return {
+          uuid: (el as { uuid?: string }).uuid,
+          name: (el as { name?: string }).name,
+          type: "unknown",
+        };
+      });
+
+      return JSON.stringify(
+        {
+          scope: scopeLabel,
+          count: elements.length,
+          truncated,
+          elements,
+        },
+        null,
+        2
+      );
+    },
+  }, elementToolDocs[8].status);
 }

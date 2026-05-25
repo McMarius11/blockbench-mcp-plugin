@@ -193,6 +193,7 @@ class TestRunner:
             "export_gltf_silent",
             "open_project_file",
             "from_java_model",
+            "get_element_info",
             "export_texture_to_png",
             "install_plugin_from_path",
             "create_locator",
@@ -729,6 +730,54 @@ class TestRunner:
             "from_java_model non-model JSON", ok, text, contains="Not a Java model"
         )
 
+    def t_get_element_info(self) -> None:
+        """Structured element dump via get_element_info — scope=all with faces,
+        include_faces=false, and scope=ids."""
+        print("\n[13/13] get_element_info (structured element dump)")
+
+        raw = {
+            "texture_size": [16, 16],
+            "elements": [
+                {"from": [0, 0, 0], "to": [16, 4, 16],
+                 "faces": {f: {"uv": [0, 0, 16, 4]}
+                           for f in ("north", "south", "east", "west", "up", "down")}},
+                {"from": [6, 4, 6], "to": [10, 12, 10],
+                 "faces": {f: {"uv": [0, 0, 4, 8]}
+                           for f in ("north", "south", "east", "west", "up", "down")}},
+            ],
+        }
+        ok, text = self.c.call("from_java_model", {"model": json.dumps(raw)})
+        self.expect_ok("setup: import 2-cube model", ok, text)
+
+        def full_cube(text: str) -> bool:
+            d = json.loads(text)
+            cubes = [e for e in d["elements"] if e["type"] == "cube"]
+            if len(cubes) < 2:
+                return False
+            c = cubes[0]
+            keys = ("from", "to", "size", "origin", "rotation", "faces")
+            return all(k in c for k in keys) and len(c["faces"]) == 6
+
+        ok, text = self.c.call("get_element_info", {})
+        self.expect_ok("get_element_info scope=all with faces", ok, text, also_check=full_cube)
+
+        def no_faces(text: str) -> bool:
+            d = json.loads(text)
+            return all("faces" not in e for e in d["elements"] if e["type"] == "cube")
+
+        ok, text = self.c.call("get_element_info", {"include_faces": False})
+        self.expect_ok("get_element_info include_faces=false", ok, text, also_check=no_faces)
+
+        # scope=ids: pull a uuid from the previous dump
+        uuid = json.loads(text)["elements"][0]["uuid"]
+
+        def ids_scope(t: str) -> bool:
+            d = json.loads(t)
+            return d["scope"] == "ids" and d["count"] == 1 and d["elements"][0]["uuid"] == uuid
+
+        ok, text = self.c.call("get_element_info", {"ids": [uuid]})
+        self.expect_ok("get_element_info scope=ids", ok, text, also_check=ids_scope)
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -771,6 +820,7 @@ def main() -> int:
         runner.t_selection_bucketing()
         runner.t_edge_cases()
         runner.t_java_import()
+        runner.t_get_element_info()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir}")

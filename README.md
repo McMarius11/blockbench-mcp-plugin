@@ -19,6 +19,7 @@ Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner
 | **UV editing** | `uv_island_transform` |
 | **Animation** | `manage_animations` |
 | **Selection inspection** | `get_selection` |
+| **Element inspection** | `get_element_info` |
 | **Project I/O** | `convert_project` |
 | **Model import** | `from_java_model` |
 | **Layout** | `align_elements`, `distribute_elements`, `set_group_visibility`, `lock_group` |
@@ -83,6 +84,12 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 | Tool | Purpose |
 |---|---|
 | `get_selection()` | Read current selection across all levels: outliner elements bucketed by class, mesh sub-selections (vertices/edges/faces per mesh), active group, active animation, current mode/tool. Closes the agent ↔ user handoff gap |
+
+### Element inspection
+
+| Tool | Purpose |
+|---|---|
+| `get_element_info(ids?, group?, selected_only?, include_groups?, include_faces?, include_mesh_geometry?, limit?)` | Structured JSON dump of element data — the read counterpart to `modify_cube`. Cubes: from/to, computed size, origin, rotation, inflate, box-UV, visibility/shade, and (default) per-face uv/texture/rotation/tint/enabled. Meshes: transform, vertex/face counts, local bounding box, optional full geometry. Groups: transform + child count. Scope via `ids` / `group` / `selected_only`, or omit all for the whole project. Read-only; pair with `list_outline` (hierarchy) and `find_elements_by_criteria` (IDs). Use instead of `risky_eval` for offline analysis of imported reference models |
 
 ### Symmetry & pivots
 
