@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-05-25T10:27:09.095Z",
+  "generatedAt": "2026-05-25T11:31:40.662Z",
   "tools": [
     {
       "name": "place_cube",
@@ -2909,7 +2909,7 @@
     {
       "name": "from_java_model",
       "title": "Import Java Model",
-      "description": "Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Set `ignore_textures: true` for geometry-only analysis or to avoid Blockbench's \"Invalid Path\" dialog on models whose texture paths contain spaces/uppercase. Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.",
+      "description": "Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Set `ignore_textures: true` for geometry-only analysis. For OptiFine CIT / resource-pack models whose textures live under `assets/<ns>/textures/` (so Blockbench reports \"File Not Found\"), pass `assets_root` (or rely on auto-derivation from optifine/cit paths) to resolve textures correctly. Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.",
       "status": "stable",
       "category": "Import/Export",
       "annotations": {
@@ -2937,6 +2937,11 @@
                 "default": false,
                 "description": "false (default): import the model's `textures` block as usual. true: drop the `textures` block before import so the codec never tries to load texture files. Use this for geometry-only reference analysis, and to avoid Blockbench's blocking \"Invalid Path\" dialog when a model references texture paths with spaces/uppercase (illegal in Minecraft Java, common in mod source models). Geometry is unaffected.",
                 "markdownDescription": "false (default): import the model's `textures` block as usual. true: drop the `textures` block before import so the codec never tries to load texture files. Use this for geometry-only reference analysis, and to avoid Blockbench's blocking \"Invalid Path\" dialog when a model references texture paths with spaces/uppercase (illegal in Minecraft Java, common in mod source models). Geometry is unaffected."
+              },
+              "assets_root": {
+                "type": "string",
+                "description": "Absolute path to the resource pack's `assets/<namespace>` folder (e.g. `/path/pack/assets/minecraft`). Namespaced texture refs like `item/foo` then resolve to `<assets_root>/textures/item/foo.png`. Fixes OptiFine CIT (and other non-standard model locations) where Blockbench otherwise looks beside the model file and reports \"File Not Found\". If omitted and the model is loaded from a filesystem path containing `/optifine/` or `/cit/`, the assets root is auto-derived from the `/assets/<namespace>/` segment of that path. Ignored when `ignore_textures` is true.",
+                "markdownDescription": "Absolute path to the resource pack's `assets/<namespace>` folder (e.g. `/path/pack/assets/minecraft`). Namespaced texture refs like `item/foo` then resolve to `<assets_root>/textures/item/foo.png`. Fixes OptiFine CIT (and other non-standard model locations) where Blockbench otherwise looks beside the model file and reports \"File Not Found\". If omitted and the model is loaded from a filesystem path containing `/optifine/` or `/cit/`, the assets root is auto-derived from the `/assets/<namespace>/` segment of that path. Ignored when `ignore_textures` is true."
               }
             },
             "required": [

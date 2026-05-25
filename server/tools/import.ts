@@ -34,6 +34,12 @@ export const fromJavaModelParameters = z.object({
     .describe(
       "false (default): import the model's `textures` block as usual. true: drop the `textures` block before import so the codec never tries to load texture files. Use this for geometry-only reference analysis, and to avoid Blockbench's blocking \"Invalid Path\" dialog when a model references texture paths with spaces/uppercase (illegal in Minecraft Java, common in mod source models). Geometry is unaffected."
     ),
+  assets_root: z
+    .string()
+    .optional()
+    .describe(
+      "Absolute path to the resource pack's `assets/<namespace>` folder (e.g. `/path/pack/assets/minecraft`). Namespaced texture refs like `item/foo` then resolve to `<assets_root>/textures/item/foo.png`. Fixes OptiFine CIT (and other non-standard model locations) where Blockbench otherwise looks beside the model file and reports \"File Not Found\". If omitted and the model is loaded from a filesystem path containing `/optifine/` or `/cit/`, the assets root is auto-derived from the `/assets/<namespace>/` segment of that path. Ignored when `ignore_textures` is true."
+    ),
 });
 
 export const importToolDocs: ToolSpec[] = [
@@ -50,7 +56,7 @@ export const importToolDocs: ToolSpec[] = [
   {
     name: "from_java_model",
     description:
-      "Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Set `ignore_textures: true` for geometry-only analysis or to avoid Blockbench's \"Invalid Path\" dialog on models whose texture paths contain spaces/uppercase. Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.",
+      "Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Set `ignore_textures: true` for geometry-only analysis. For OptiFine CIT / resource-pack models whose textures live under `assets/<ns>/textures/` (so Blockbench reports \"File Not Found\"), pass `assets_root` (or rely on auto-derivation from optifine/cit paths) to resolve textures correctly. Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.",
     annotations: {
       title: "Import Java Model",
       destructiveHint: true,
@@ -115,7 +121,7 @@ export function registerImportTools() {
 
   createTool(importToolDocs[1].name, {
     ...importToolDocs[1],
-    async execute({ model, import_to_current_project, ignore_textures }) {
+    async execute({ model, import_to_current_project, ignore_textures, assets_root }) {
       const source = classifyModelSource(model);
 
       let jsonText: string;
@@ -193,20 +199,59 @@ export function registerImportTools() {
         );
       }
 
+      // Texture resolution base. Blockbench resolves a model's namespaced
+      // texture refs ("item/foo") relative to the model file, but for OptiFine
+      // CIT (or any model not directly under assets/<ns>/models/) that lands in
+      // the wrong folder → "File Not Found". Passing the codec a synthesized
+      // standard `<assets_root>/models/<name>.json` path makes refs resolve to
+      // `<assets_root>/textures/...`, where the files actually live.
+      const basename =
+        (modelPath || "model").split(/[\/\\]/).pop()!.replace(/\.json$/i, "") ||
+        "model";
+
+      let effectiveAssetsRoot: string | null = assets_root ?? null;
+      if (
+        !effectiveAssetsRoot &&
+        source.kind === "path" &&
+        /[\/\\](optifine|cit)[\/\\]/i.test(modelPath)
+      ) {
+        const m = modelPath.match(/^(.*[\/\\]assets[\/\\][^\/\\]+)[\/\\]/);
+        if (m) effectiveAssetsRoot = m[1];
+      }
+
+      let codecPath = modelPath;
+      let textureAssetsRoot: string | null = null;
+      if (effectiveAssetsRoot && !ignore_textures) {
+        codecPath = `${effectiveAssetsRoot}/models/${basename}.json`;
+        textureAssetsRoot = effectiveAssetsRoot;
+      }
+
       // codec.load() runs setupProject(java_block) for a fresh tab (when not
       // importing to current), then parse(). `no_file: true` skips the
-      // recent-project / Project.name / export_path side effects — we set those
-      // ourselves only for a brand-new tab backed by a real file, and never
-      // clobber the current project when importing into it. The texture path
-      // is still passed to parse() via `path`, so texture references resolve
-      // regardless of no_file.
+      // recent-project / Project.name / export_path side effects. We force it
+      // when importing to current (don't clobber), when there's no real file,
+      // or when we synthesized a texture-resolution path (don't set export_path
+      // to a path the model isn't actually saved at). The texture path is still
+      // passed to parse() via `path`, so texture references resolve.
       const hasRealFile = source.kind === "path";
-      const noFile = import_to_current_project || !hasRealFile;
+      const synthesizedPath = codecPath !== modelPath;
+      const noFile = import_to_current_project || !hasRealFile || synthesizedPath;
       codec.load(
         parsed,
-        { path: modelPath },
+        { path: codecPath },
         { import_to_current_project, no_file: noFile }
       );
+
+      // We skipped name-setting above (no_file) but synthesized a path for a
+      // fresh tab from a real file — give the project the real model's name.
+      if (
+        synthesizedPath &&
+        !import_to_current_project &&
+        typeof Project !== "undefined" &&
+        Project
+      ) {
+        Project.name = basename;
+      }
 
       // @ts-ignore - Outliner / Cube are Blockbench globals
       const root: unknown[] =
@@ -227,6 +272,7 @@ export function registerImportTools() {
         top_level_element_count: root.length,
         cube_count: cubeCount,
         textures_ignored: texturesIgnored,
+        texture_assets_root: textureAssetsRoot,
       });
     },
   }, importToolDocs[1].status);

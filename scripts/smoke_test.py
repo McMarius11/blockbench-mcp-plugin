@@ -883,6 +883,64 @@ class TestRunner:
             also_check=lambda t: len(json.loads(t).get("textures", [])) == 0,
         )
 
+    def t_cit_texture_resolution(self) -> None:
+        """from_java_model assets_root: an OptiFine-CIT-style model whose
+        textures live under assets/<ns>/textures/ resolves and loads them
+        (Blockbench would otherwise report "File Not Found")."""
+        print("\n[16/16] from_java_model assets_root (CIT texture resolution)")
+        import base64
+
+        # minimal valid 1x1 PNG
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4"
+            "2mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+        tex_dir = os.path.join(self.workdir, "assets", "minecraft", "textures", "item")
+        cit_dir = os.path.join(self.workdir, "assets", "minecraft", "optifine", "cit", "guns")
+        os.makedirs(tex_dir, exist_ok=True)
+        os.makedirs(cit_dir, exist_ok=True)
+        # spaced filename, like the real Hardt's pack
+        with open(os.path.join(tex_dir, "smoke tex.png"), "wb") as fh:
+            fh.write(png)
+
+        model = {
+            "textures": {"0": "item/smoke tex"},
+            "elements": [
+                {"from": [0, 0, 0], "to": [16, 16, 16],
+                 "faces": {f: {"uv": [0, 0, 16, 16], "texture": "#0"}
+                           for f in ("north", "south", "east", "west", "up", "down")}},
+            ],
+        }
+        model_path = os.path.join(cit_dir, "smokegun.json")
+        with open(model_path, "w", encoding="utf-8") as fh:
+            json.dump(model, fh)
+
+        expected_root = os.path.join(self.workdir, "assets", "minecraft")
+
+        # assets_root auto-derived from the optifine/cit path
+        def derived_ok(t: str) -> bool:
+            d = json.loads(t)
+            return d.get("texture_assets_root") == expected_root and d["cube_count"] == 1
+
+        ok, text = self.c.call("from_java_model", {"model": model_path})
+        self.expect_ok("CIT auto-derives assets_root", ok, text, also_check=derived_ok)
+
+        # texture resolved to the real file and loaded (no File Not Found)
+        ok, text = self.c.call("get_project_state", {})
+        self.expect_ok(
+            "CIT texture resolved & loaded", ok, text,
+            also_check=lambda t: len(json.loads(t).get("textures", [])) == 1,
+        )
+
+        # explicit assets_root override also works
+        ok, text = self.c.call(
+            "from_java_model", {"model": model_path, "assets_root": expected_root}
+        )
+        self.expect_ok(
+            "explicit assets_root", ok, text,
+            also_check=lambda t: json.loads(t).get("texture_assets_root") == expected_root,
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -928,6 +986,7 @@ def main() -> int:
         runner.t_get_element_info()
         runner.t_grouping_and_filters()
         runner.t_ignore_textures()
+        runner.t_cit_texture_resolution()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir}")
