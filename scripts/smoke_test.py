@@ -194,6 +194,7 @@ class TestRunner:
             "open_project_file",
             "from_java_model",
             "get_element_info",
+            "move_to_group",
             "export_texture_to_png",
             "install_plugin_from_path",
             "create_locator",
@@ -778,6 +779,78 @@ class TestRunner:
         ok, text = self.c.call("get_element_info", {"ids": [uuid]})
         self.expect_ok("get_element_info scope=ids", ok, text, also_check=ids_scope)
 
+    def t_grouping_and_filters(self) -> None:
+        """move_to_group reparenting + cycle guard, and the region / face-state
+        filters added to find_elements_by_criteria."""
+        print("\n[14/14] grouping + find filters (move_to_group, region/face)")
+
+        raw = {"texture_size": [16, 16], "elements": [
+            {"from": [0, 0, 0], "to": [16, 4, 16],
+             "faces": {f: {"uv": [0, 0, 16, 4]}
+                       for f in ("north", "south", "east", "west", "up", "down")}},
+            {"from": [6, 4, 6], "to": [10, 12, 10],
+             "faces": {f: {"uv": [0, 0, 4, 8]}
+                       for f in ("north", "south", "east", "west", "up", "down")}},
+        ]}
+        ok, text = self.c.call("from_java_model", {"model": json.dumps(raw)})
+        self.expect_ok("setup: import 2-cube model", ok, text)
+
+        ok, text = self.c.call("get_element_info", {})
+        cubes = [e for e in json.loads(text)["elements"] if e["type"] == "cube"]
+        lower = next(e for e in cubes if (e["from"][1] + e["to"][1]) / 2 < 4)
+        upper = next(e for e in cubes if (e["from"][1] + e["to"][1]) / 2 >= 4)
+
+        # region filter: cube center y in [5,..] → only the upper cube
+        def only_upper(t: str) -> bool:
+            d = json.loads(t)
+            return d["count"] == 1 and d["matches"][0]["uuid"] == upper["uuid"]
+
+        ok, text = self.c.call(
+            "find_elements_by_criteria",
+            {"type": "cube", "region_min": [-99, 5, -99], "region_max": [99, 99, 99]},
+        )
+        self.expect_ok("find region filter (center in zone)", ok, text, also_check=only_upper)
+
+        # face_enabled: both have north → 2; disable lower.north → 1
+        ok, text = self.c.call(
+            "find_elements_by_criteria", {"type": "cube", "face_enabled": "north"}
+        )
+        self.expect_ok(
+            "find face_enabled=north (both)", ok, text,
+            also_check=lambda t: json.loads(t)["count"] == 2,
+        )
+        self.c.call("modify_cube_uv", {"id": lower["uuid"],
+                                       "faces": [{"face": "north", "enabled": False}]})
+        ok, text = self.c.call(
+            "find_elements_by_criteria", {"type": "cube", "face_enabled": "north"}
+        )
+        self.expect_ok(
+            "find face_enabled=north after disabling one", ok, text,
+            also_check=lambda t: json.loads(t)["count"] == 1,
+        )
+
+        # move_to_group: reparent both cubes into a new group, verify parent
+        self.c.call("add_group", {"name": "receiver", "origin": [0, 0, 0], "rotation": [0, 0, 0]})
+        ok, text = self.c.call(
+            "move_to_group",
+            {"ids": [lower["uuid"], upper["uuid"]], "target_group": "receiver"},
+        )
+        self.expect_ok(
+            "move_to_group reparents into group", ok, text,
+            also_check=lambda t: json.loads(t)["moved"] == 2,
+        )
+        ok, text = self.c.call("get_element_info", {"ids": [lower["uuid"], upper["uuid"]]})
+        self.expect_ok(
+            "move_to_group parent verified", ok, text,
+            also_check=lambda t: all(e["parent"] == "receiver" for e in json.loads(t)["elements"]),
+        )
+
+        # cycle guard: moving a group into itself must error
+        ok, text = self.c.call(
+            "move_to_group", {"ids": ["receiver"], "target_group": "receiver"}
+        )
+        self.expect_err("move_to_group cycle guard", ok, text, contains="into itself")
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -821,6 +894,7 @@ def main() -> int:
         runner.t_edge_cases()
         runner.t_java_import()
         runner.t_get_element_info()
+        runner.t_grouping_and_filters()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir}")

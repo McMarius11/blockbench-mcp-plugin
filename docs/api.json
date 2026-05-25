@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-05-25T09:13:42.304Z",
+  "generatedAt": "2026-05-25T09:43:54.612Z",
   "tools": [
     {
       "name": "place_cube",
@@ -2442,6 +2442,39 @@
                 "description": "Only consider currently selected elements.",
                 "markdownDescription": "Only consider currently selected elements."
               },
+              "region_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Region filter lower bound [x,y,z]. Keeps only elements whose position is >= this on every axis — cube center for cubes, origin for meshes. Groups are excluded when a region filter is set. Use with `region_max` to query a zone (e.g. a receiver bounding box).",
+                "markdownDescription": "Region filter lower bound [x,y,z]. Keeps only elements whose position is >= this on every axis — cube center for cubes, origin for meshes. Groups are excluded when a region filter is set. Use with `region_max` to query a zone (e.g. a receiver bounding box)."
+              },
+              "region_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Region filter upper bound [x,y,z]. Keeps only elements whose position is <= this on every axis (cube center / mesh origin).",
+                "markdownDescription": "Region filter upper bound [x,y,z]. Keeps only elements whose position is <= this on every axis (cube center / mesh origin)."
+              },
+              "face_enabled": {
+                "type": "string",
+                "enum": [
+                  "north",
+                  "south",
+                  "east",
+                  "west",
+                  "up",
+                  "down"
+                ],
+                "description": "Keep only cubes whose given face (north/south/east/west/up/down) is enabled. Non-cube elements are excluded when set.",
+                "markdownDescription": "Keep only cubes whose given face (north/south/east/west/up/down) is enabled. Non-cube elements are excluded when set."
+              },
               "limit": {
                 "type": "integer",
                 "minimum": 1,
@@ -2600,6 +2633,46 @@
                 "markdownDescription": "Maximum number of elements to return."
               }
             },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "move_to_group",
+      "title": "Move Elements to Group",
+      "description": "Reparents existing elements (cubes, meshes, or groups) into a target group, or to the top level with `target_group: \"root\"`. The complement to `add_group` (which only creates empty groups) — this is how you organize a flat import (e.g. a Java model from `from_java_model`) into logical groups. Semantic grouping logic stays in the caller: compute which elements go where from a `get_element_info` dump, then issue the moves. Refuses to move a group into itself or its own descendant. Returns a JSON summary.",
+      "status": "stable",
+      "category": "Elements",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/move_to_group",
+        "definitions": {
+          "move_to_group": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "description": "Element IDs or names to move (cubes, meshes, or groups). Reparents existing elements — does not duplicate.",
+                "markdownDescription": "Element IDs or names to move (cubes, meshes, or groups). Reparents existing elements — does not duplicate."
+              },
+              "target_group": {
+                "type": "string",
+                "description": "Destination group UUID or name, or the literal \"root\" to move to the top level. The AI computes which elements belong where (e.g. from a `get_element_info` dump); this tool just performs the move.",
+                "markdownDescription": "Destination group UUID or name, or the literal \"root\" to move to the top level. The AI computes which elements belong where (e.g. from a `get_element_info` dump); this tool just performs the move."
+              }
+            },
+            "required": [
+              "ids",
+              "target_group"
+            ],
             "additionalProperties": false
           }
         },

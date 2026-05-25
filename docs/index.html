@@ -18,7 +18,7 @@
 
       <div class="nav-group">
         <p class="nav-heading">Overview</p>
-        <a href="#tools" class="nav-link">Tools <span class="count">(140)</span></a>
+        <a href="#tools" class="nav-link">Tools <span class="count">(141)</span></a>
         <a href="#prompts" class="nav-link">Prompts <span class="count">(6)</span></a>
         <a href="#resources" class="nav-link">Resources <span class="count">(12)</span></a>
       </div>
@@ -29,7 +29,7 @@
         <a href="#cat-camera-screenshots" class="nav-link">Camera &amp; Screenshots <span class="count">(3)</span></a>
         <a href="#cat-animation" class="nav-link">Animation <span class="count">(8)</span></a>
         <a href="#cat-armature" class="nav-link">Armature <span class="count">(16)</span></a>
-        <a href="#cat-elements" class="nav-link">Elements <span class="count">(9)</span></a>
+        <a href="#cat-elements" class="nav-link">Elements <span class="count">(10)</span></a>
         <a href="#cat-export" class="nav-link">Export <span class="count">(2)</span></a>
         <a href="#cat-history" class="nav-link">History <span class="count">(4)</span></a>
         <a href="#cat-import-export" class="nav-link">Import/Export <span class="count">(2)</span></a>
@@ -53,7 +53,7 @@
         <h1>Blockbench MCP Plugin</h1>
         <p class="subtitle">API Reference — v1.6.0</p>
         <nav class="stats">
-          <a href="#tools"><strong>140</strong> tools (65 stable, 75 experimental)</a>
+          <a href="#tools"><strong>141</strong> tools (66 stable, 75 experimental)</a>
           <a href="#prompts"><strong>6</strong> prompts</a>
           <a href="#resources"><strong>12</strong> resources</a>
         </nav>
@@ -1625,6 +1625,21 @@
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Only consider currently selected elements. <span class="param-meta">(default: <code>false</code>)</span></td>
     </tr><tr>
+      <td class="col-name">region_min</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Region filter lower bound [x,y,z]. Keeps only elements whose position is &gt;= this on every axis — cube center for cubes, origin for meshes. Groups are excluded when a region filter is set. Use with `region_max` to query a zone (e.g. a receiver bounding box). <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">region_max</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Region filter upper bound [x,y,z]. Keeps only elements whose position is &lt;= this on every axis (cube center / mesh origin). <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">face_enabled</td>
+      <td class="col-type">&quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;up&quot; | &quot;down&quot;</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Keep only cubes whose given face (north/south/east/west/up/down) is enabled. Non-cube elements are excluded when set.</td>
+    </tr><tr>
       <td class="col-name">limit</td>
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
@@ -1761,6 +1776,40 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Maximum number of elements to return. <span class="param-meta">(default: <code>1000</code>) [min: 1, max: 5000]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-move_to_group" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">move_to_group</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Move Elements to Group</p>
+      <p class="card-desc">Reparents existing elements (cubes, meshes, or groups) into a target group, or to the top level with `target_group: &quot;root&quot;`. The complement to `add_group` (which only creates empty groups) — this is how you organize a flat import (e.g. a Java model from `from_java_model`) into logical groups. Semantic grouping logic stays in the caller: compute which elements go where from a `get_element_info` dump, then issue the moves. Refuses to move a group into itself or its own descendant. Returns a JSON summary.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">ids</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Element IDs or names to move (cubes, meshes, or groups). Reparents existing elements — does not duplicate. <span class="param-meta">[minItems: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">target_group</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Destination group UUID or name, or the literal &quot;root&quot; to move to the top level. The AI computes which elements belong where (e.g. from a `get_element_info` dump); this tool just performs the move.</td>
     </tr></tbody>
     </table>
       </div>
@@ -5716,7 +5765,7 @@
       </section>
 
       <footer class="page-footer">
-        Generated 2026-05-25T09:13:42.304Z from Zod schemas
+        Generated 2026-05-25T09:43:54.612Z from Zod schemas
       </footer>
     </main>
   </div>

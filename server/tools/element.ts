@@ -16,6 +16,15 @@ export const removeElementParameters = z.object({
 
 export const elementTypeEnum = z.enum(["cube", "mesh", "group", "any"]);
 
+export const cubeFaceEnum = z.enum([
+  "north",
+  "south",
+  "east",
+  "west",
+  "up",
+  "down",
+]);
+
 export const findElementsByCriteriaParameters = z.object({
   name_pattern: z
     .string()
@@ -48,6 +57,21 @@ export const findElementsByCriteriaParameters = z.object({
     .optional()
     .default(false)
     .describe("Only consider currently selected elements."),
+  region_min: vector3Schema
+    .optional()
+    .describe(
+      "Region filter lower bound [x,y,z]. Keeps only elements whose position is >= this on every axis — cube center for cubes, origin for meshes. Groups are excluded when a region filter is set. Use with `region_max` to query a zone (e.g. a receiver bounding box)."
+    ),
+  region_max: vector3Schema
+    .optional()
+    .describe(
+      "Region filter upper bound [x,y,z]. Keeps only elements whose position is <= this on every axis (cube center / mesh origin)."
+    ),
+  face_enabled: cubeFaceEnum
+    .optional()
+    .describe(
+      "Keep only cubes whose given face (north/south/east/west/up/down) is enabled. Non-cube elements are excluded when set."
+    ),
   limit: z
     .number()
     .int()
@@ -56,6 +80,20 @@ export const findElementsByCriteriaParameters = z.object({
     .optional()
     .default(200)
     .describe("Maximum number of results to return."),
+});
+
+export const moveToGroupParameters = z.object({
+  ids: z
+    .array(z.string())
+    .min(1)
+    .describe(
+      "Element IDs or names to move (cubes, meshes, or groups). Reparents existing elements — does not duplicate."
+    ),
+  target_group: z
+    .string()
+    .describe(
+      "Destination group UUID or name, or the literal \"root\" to move to the top level. The AI computes which elements belong where (e.g. from a `get_element_info` dump); this tool just performs the move."
+    ),
 });
 
 export const selectAllOfTypeParameters = z.object({
@@ -278,6 +316,17 @@ export const elementToolDocs: ToolSpec[] = [
     parameters: getElementInfoParameters,
     status: STATUS_STABLE,
   },
+  {
+    name: "move_to_group",
+    description:
+      "Reparents existing elements (cubes, meshes, or groups) into a target group, or to the top level with `target_group: \"root\"`. The complement to `add_group` (which only creates empty groups) — this is how you organize a flat import (e.g. a Java model from `from_java_model`) into logical groups. Semantic grouping logic stays in the caller: compute which elements go where from a `get_element_info` dump, then issue the moves. Refuses to move a group into itself or its own descendant. Returns a JSON summary.",
+    annotations: {
+      title: "Move Elements to Group",
+      destructiveHint: true,
+    },
+    parameters: moveToGroupParameters,
+    status: STATUS_STABLE,
+  },
 ];
 
 interface IElementMatch {
@@ -331,6 +380,24 @@ function exceedsBounds(
 ): boolean {
   if (min && size.some((v, i) => v < (min[i] ?? -Infinity))) return true;
   if (max && size.some((v, i) => v > (max[i] ?? Infinity))) return true;
+  return false;
+}
+
+function cubeCenter(cube: Cube): [number, number, number] {
+  return [
+    (cube.from[0] + cube.to[0]) / 2,
+    (cube.from[1] + cube.to[1]) / 2,
+    (cube.from[2] + cube.to[2]) / 2,
+  ];
+}
+
+function outsideRegion(
+  point: [number, number, number],
+  min?: number[],
+  max?: number[]
+): boolean {
+  if (min && point.some((v, i) => v < (min[i] ?? -Infinity))) return true;
+  if (max && point.some((v, i) => v > (max[i] ?? Infinity))) return true;
   return false;
 }
 
@@ -706,6 +773,9 @@ export function registerElementTools() {
       min_size,
       max_size,
       selected_only,
+      region_min,
+      region_max,
+      face_enabled,
       limit,
     }) {
       const regex = safeCompileRegex(name_pattern);
@@ -741,6 +811,23 @@ export function registerElementTools() {
 
         if (el instanceof Cube && (min_size || max_size)) {
           if (exceedsBounds(cubeSize(el), min_size, max_size)) continue;
+        }
+
+        if (region_min || region_max) {
+          if (el instanceof Group) continue;
+          const point =
+            el instanceof Cube
+              ? cubeCenter(el)
+              : ((el as { origin: [number, number, number] }).origin);
+          if (outsideRegion(point, region_min, region_max)) continue;
+        }
+
+        if (face_enabled) {
+          if (!(el instanceof Cube)) continue;
+          const face = (el.faces as Record<string, { enabled?: boolean }>)?.[
+            face_enabled
+          ];
+          if (!face || face.enabled === false) continue;
         }
 
         matches.push({
@@ -954,4 +1041,65 @@ export function registerElementTools() {
       );
     },
   }, elementToolDocs[8].status);
+
+  createTool(elementToolDocs[9].name, {
+    ...elementToolDocs[9],
+    async execute({ ids, target_group }) {
+      const toRoot = target_group === "root";
+      // @ts-ignore - Group is a Blockbench global
+      const target: Group | "root" | null = toRoot
+        ? "root"
+        : (Group.all.find(
+            (g: Group) => g.uuid === target_group || g.name === target_group
+          ) ?? null);
+
+      if (!toRoot && !target) {
+        throw new Error(
+          `Target group "${target_group}" not found. Use list_outline to see available groups, or pass "root".`
+        );
+      }
+
+      const elements = ids.map((id: string) => findElementOrThrow(id)) as Array<
+        Cube | Mesh | Group
+      >;
+
+      // Cycle guard: don't move a group into itself or one of its descendants.
+      if (!toRoot && target instanceof Group) {
+        for (const el of elements) {
+          if (el instanceof Group) {
+            if (el === target) {
+              throw new Error(`Cannot move group "${el.name}" into itself.`);
+            }
+            if (isDescendantOf(target, el)) {
+              throw new Error(
+                `Cannot move group "${el.name}" into its own descendant "${target.name}" — would create a cycle.`
+              );
+            }
+          }
+        }
+      }
+
+      Undo.initEdit({ elements: [], outliner: true, collections: [] });
+      for (const el of elements) {
+        // @ts-ignore - addTo accepts a Group or the "root" sentinel (per add_group)
+        el.addTo(target);
+      }
+      Undo.finishEdit("Agent moved elements to group");
+      Canvas.updateAll();
+
+      return JSON.stringify(
+        {
+          moved: elements.length,
+          target: toRoot ? "root" : (target as Group).name,
+          items: elements.map((el) => ({
+            uuid: el.uuid,
+            name: el.name,
+            type: getElementType(el),
+          })),
+        },
+        null,
+        2
+      );
+    },
+  }, elementToolDocs[9].status);
 }
