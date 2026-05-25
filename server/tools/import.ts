@@ -27,6 +27,13 @@ export const fromJavaModelParameters = z.object({
     .describe(
       "false (default): open the model in a NEW Java Block/Item project tab, mirroring File > Import. true: add the model's elements into the currently open project as a new group (a project must already be open; the current project's name/export settings are left untouched)."
     ),
+  ignore_textures: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "false (default): import the model's `textures` block as usual. true: drop the `textures` block before import so the codec never tries to load texture files. Use this for geometry-only reference analysis, and to avoid Blockbench's blocking \"Invalid Path\" dialog when a model references texture paths with spaces/uppercase (illegal in Minecraft Java, common in mod source models). Geometry is unaffected."
+    ),
 });
 
 export const importToolDocs: ToolSpec[] = [
@@ -43,7 +50,7 @@ export const importToolDocs: ToolSpec[] = [
   {
     name: "from_java_model",
     description:
-      "Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.",
+      "Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Set `ignore_textures: true` for geometry-only analysis or to avoid Blockbench's \"Invalid Path\" dialog on models whose texture paths contain spaces/uppercase. Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.",
     annotations: {
       title: "Import Java Model",
       destructiveHint: true,
@@ -108,7 +115,7 @@ export function registerImportTools() {
 
   createTool(importToolDocs[1].name, {
     ...importToolDocs[1],
-    async execute({ model, import_to_current_project }) {
+    async execute({ model, import_to_current_project, ignore_textures }) {
       const source = classifyModelSource(model);
 
       let jsonText: string;
@@ -142,6 +149,35 @@ export function registerImportTools() {
         );
       }
       assertJavaModelShape(parsed);
+
+      // Strip textures before handing off to the codec. Its parse() calls
+      // Texture.fromJavaLink() for every entry, which pops Blockbench's blocking
+      // "Invalid Path" dialog when a texture path has spaces/uppercase (illegal
+      // in MC Java, common in mod source models). We also drop the per-face
+      // `texture` refs, otherwise the codec creates a blank placeholder texture
+      // for each dangling "#n" reference. Geometry (from/to/faces/uv) is untouched.
+      let texturesIgnored = 0;
+      if (ignore_textures) {
+        const modelObj = parsed as {
+          textures?: Record<string, unknown>;
+          elements?: Array<{ faces?: Record<string, { texture?: unknown }> }>;
+        };
+        if (modelObj.textures && typeof modelObj.textures === "object") {
+          texturesIgnored = Object.keys(modelObj.textures).length;
+          delete modelObj.textures;
+        }
+        if (Array.isArray(modelObj.elements)) {
+          for (const el of modelObj.elements) {
+            if (el?.faces && typeof el.faces === "object") {
+              for (const face of Object.values(el.faces)) {
+                if (face && typeof face === "object") {
+                  delete (face as { texture?: unknown }).texture;
+                }
+              }
+            }
+          }
+        }
+      }
 
       if (import_to_current_project && typeof Project !== "undefined" && !Project) {
         throw new Error(
@@ -190,6 +226,7 @@ export function registerImportTools() {
         format: typeof Format !== "undefined" && Format ? Format.id : null,
         top_level_element_count: root.length,
         cube_count: cubeCount,
+        textures_ignored: texturesIgnored,
       });
     },
   }, importToolDocs[1].status);

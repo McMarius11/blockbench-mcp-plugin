@@ -8,6 +8,10 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ## [unreleased] — 2026-05-25
 
+### Changed — `from_java_model` gains `ignore_textures` (`server/tools/import.ts`)
+
+- **`from_java_model(..., ignore_textures?)`** — when `true`, drops the model's `textures` block **and** per-face `texture` refs before handing off to the codec. The java_block codec's `parse()` calls `Texture.fromJavaLink()` for each texture, which pops Blockbench's **blocking "Invalid Path" dialog** when a texture path contains spaces/uppercase (illegal in MC Java, common in mod source models like Hardt's Guns) — a real problem for dialog-free agentic import. Stripping the refs also prevents the codec from creating blank placeholder textures for dangling `"#n"` references, so a geometry-only import lands 0 textures. Default `false` (unchanged behaviour). Result JSON now includes `textures_ignored`. Verified live (0 textures, no dialog, with the exact `item/coal block` + `item/anvil 1` paths) + smoke group `[15/15]`.
+
 ### Added — `move_to_group` reparenting + `find_elements_by_criteria` region/face filters (`server/tools/element.ts`)
 
 - **`move_to_group(ids, target_group)`** — reparents existing cubes/meshes/groups into a target group, or to the top level with `target_group: "root"`. The complement to `add_group` (which only creates empty groups); together they turn a flat `from_java_model` import into an organized outliner. Wraps `OutlinerElement.addTo`. Refuses to move a group into itself or its own descendant (cycle guard). Semantic grouping (which element → which zone) stays in the caller, computed from a `get_element_info` dump — the plugin only performs the move. **STABLE** (verified live + smoke group [14/14]).

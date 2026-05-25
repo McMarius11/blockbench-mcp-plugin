@@ -851,6 +851,38 @@ class TestRunner:
         )
         self.expect_err("move_to_group cycle guard", ok, text, contains="into itself")
 
+    def t_ignore_textures(self) -> None:
+        """from_java_model ignore_textures: a model whose texture paths have
+        spaces (would pop Blockbench's blocking "Invalid Path" dialog) imports
+        cleanly with no textures created."""
+        print("\n[15/15] from_java_model ignore_textures (no Invalid Path dialog)")
+
+        raw = {
+            "texture_size": [16, 16],
+            # these paths have spaces — illegal in MC Java, trigger the dialog
+            "textures": {"0": "item/coal block", "1": "item/anvil 1"},
+            "elements": [
+                {"from": [0, 0, 0], "to": [16, 16, 16],
+                 "faces": {f: {"uv": [0, 0, 16, 16], "texture": "#0"}
+                           for f in ("north", "south", "east", "west", "up", "down")}},
+            ],
+        }
+        ok, text = self.c.call(
+            "from_java_model", {"model": json.dumps(raw), "ignore_textures": True}
+        )
+        self.expect_ok(
+            "ignore_textures import (no dialog)", ok, text,
+            also_check=lambda t: json.loads(t)["textures_ignored"] == 2
+            and json.loads(t)["cube_count"] == 1,
+        )
+
+        # the fresh tab must have zero textures — no placeholder, no file load
+        ok, text = self.c.call("get_project_state", {})
+        self.expect_ok(
+            "ignore_textures created no textures", ok, text,
+            also_check=lambda t: len(json.loads(t).get("textures", [])) == 0,
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -895,6 +927,7 @@ def main() -> int:
         runner.t_java_import()
         runner.t_get_element_info()
         runner.t_grouping_and_filters()
+        runner.t_ignore_textures()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir}")
