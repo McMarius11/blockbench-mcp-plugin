@@ -20,6 +20,7 @@ Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner
 | **Animation** | `manage_animations` |
 | **Selection inspection** | `get_selection` |
 | **Project I/O** | `convert_project` |
+| **Model import** | `from_java_model` |
 | **Layout** | `align_elements`, `distribute_elements`, `set_group_visibility`, `lock_group` |
 | **Selection / settings** | `select_by_pattern`, `read_setting`, `write_setting` |
 
@@ -40,6 +41,12 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 | `delete_texture(id)` | Remove orphan textures programmatically |
 | `switch_to_tab(tab)` | Switch `edit`/`paint`/`animate`/`display`/`pose` modes |
 | `get_project_state()` | Diagnostic JSON: name, format, save_path, texture sizes, counts, current mode |
+
+### Model import
+
+| Tool | Purpose |
+|---|---|
+| `from_java_model(model, import_to_current_project?)` | Import a raw Minecraft **Java** block/item model (`.json` with top-level `elements`, e.g. mod viewmodels like Hardt's Guns) without the File > Import dialog. `model` accepts inline JSON, an `http(s)` URL, or a filesystem path; wraps `Codecs.java_block.load`. Default opens a new Java Block/Item project tab; `import_to_current_project: true` merges the elements into the open project (its name/export settings are preserved). Returns a JSON summary (project name, format, element/cube counts). For Bedrock geometry use the upstream `from_geo_json` instead |
 
 ### Plugin hot-swap
 

@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-05-24T23:50:48.726Z",
+  "generatedAt": "2026-05-25T08:42:27.832Z",
   "tools": [
     {
       "name": "place_cube",
@@ -2759,6 +2759,42 @@
             },
             "required": [
               "geojson"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "from_java_model",
+      "title": "Import Java Model",
+      "description": "Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.",
+      "status": "stable",
+      "category": "Import/Export",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/from_java_model",
+        "definitions": {
+          "from_java_model": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string",
+                "description": "A Minecraft Java model as an inline JSON string, an http(s) URL, or an absolute filesystem path to a .json file (e.g. a mod's `models/item/*.json`). Raw element models — top-level `elements` with from/to/faces, like Hardt's Guns viewmodels — import directly. Models that only reference a `parent` import what they contain, but the parent's geometry is NOT resolved unless those assets are present.",
+                "markdownDescription": "A Minecraft Java model as an inline JSON string, an http(s) URL, or an absolute filesystem path to a .json file (e.g. a mod's `models/item/*.json`). Raw element models — top-level `elements` with from/to/faces, like Hardt's Guns viewmodels — import directly. Models that only reference a `parent` import what they contain, but the parent's geometry is NOT resolved unless those assets are present."
+              },
+              "import_to_current_project": {
+                "type": "boolean",
+                "default": false,
+                "description": "false (default): open the model in a NEW Java Block/Item project tab, mirroring File > Import. true: add the model's elements into the currently open project as a new group (a project must already be open; the current project's name/export settings are left untouched).",
+                "markdownDescription": "false (default): open the model in a NEW Java Block/Item project tab, mirroring File > Import. true: add the model's elements into the currently open project as a new group (a project must already be open; the current project's name/export settings are left untouched)."
+              }
+            },
+            "required": [
+              "model"
             ],
             "additionalProperties": false
           }

@@ -192,6 +192,7 @@ class TestRunner:
             "save_project_silent",
             "export_gltf_silent",
             "open_project_file",
+            "from_java_model",
             "export_texture_to_png",
             "install_plugin_from_path",
             "create_locator",
@@ -669,6 +670,66 @@ class TestRunner:
         )
 
 
+    def t_java_import(self) -> None:
+        """Programmatic Minecraft Java model import (no file dialog) via
+        from_java_model — inline JSON into a new tab, a real .json file, and
+        the two validation error paths."""
+        print("\n[12/12] java model import (from_java_model)")
+
+        raw_model = {
+            "credit": "smoke-test",
+            "texture_size": [16, 16],
+            "elements": [
+                {
+                    "from": [0, 0, 0],
+                    "to": [16, 4, 16],
+                    "faces": {
+                        f: {"uv": [0, 0, 16, 4]}
+                        for f in ("north", "south", "east", "west", "up", "down")
+                    },
+                },
+                {
+                    "from": [6, 4, 6],
+                    "to": [10, 12, 10],
+                    "faces": {
+                        f: {"uv": [0, 0, 4, 8]}
+                        for f in ("north", "south", "east", "west", "up", "down")
+                    },
+                },
+            ],
+        }
+
+        def two_cubes(text: str) -> bool:
+            data = json.loads(text)
+            return data.get("cube_count") == 2 and data.get("format") == "java_block"
+
+        # inline JSON → new Java Block project tab (default behaviour)
+        ok, text = self.c.call(
+            "from_java_model", {"model": json.dumps(raw_model)}
+        )
+        self.expect_ok("from_java_model inline → new tab", ok, text, also_check=two_cubes)
+
+        # real .json file on disk → import into the current project
+        model_path = os.path.join(self.workdir, "gun.json")
+        with open(model_path, "w", encoding="utf-8") as fh:
+            json.dump(raw_model, fh)
+        ok, text = self.c.call(
+            "from_java_model",
+            {"model": model_path, "import_to_current_project": True},
+        )
+        self.expect_ok("from_java_model file path → current project", ok, text)
+
+        # invalid JSON → clear error
+        ok, text = self.c.call("from_java_model", {"model": "{not json"})
+        self.expect_err("from_java_model invalid JSON", ok, text, contains="Invalid JSON")
+
+        # valid JSON but not a Java model → clear error
+        ok, text = self.c.call("from_java_model", {"model": '{"foo": 1}'})
+        self.expect_err(
+            "from_java_model non-model JSON", ok, text, contains="Not a Java model"
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
@@ -709,6 +770,7 @@ def main() -> int:
         runner.t_round_trip()
         runner.t_selection_bucketing()
         runner.t_edge_cases()
+        runner.t_java_import()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir}")

@@ -18,7 +18,7 @@
 
       <div class="nav-group">
         <p class="nav-heading">Overview</p>
-        <a href="#tools" class="nav-link">Tools <span class="count">(110)</span></a>
+        <a href="#tools" class="nav-link">Tools <span class="count">(139)</span></a>
         <a href="#prompts" class="nav-link">Prompts <span class="count">(6)</span></a>
         <a href="#resources" class="nav-link">Resources <span class="count">(12)</span></a>
       </div>
@@ -32,7 +32,7 @@
         <a href="#cat-elements" class="nav-link">Elements <span class="count">(8)</span></a>
         <a href="#cat-export" class="nav-link">Export <span class="count">(2)</span></a>
         <a href="#cat-history" class="nav-link">History <span class="count">(4)</span></a>
-        <a href="#cat-import-export" class="nav-link">Import/Export <span class="count">(1)</span></a>
+        <a href="#cat-import-export" class="nav-link">Import/Export <span class="count">(2)</span></a>
         <a href="#cat-material-instances" class="nav-link">Material Instances <span class="count">(5)</span></a>
         <a href="#cat-mesh-editing" class="nav-link">Mesh Editing <span class="count">(13)</span></a>
         <a href="#cat-paint-tools" class="nav-link">Paint Tools <span class="count">(12)</span></a>
@@ -41,6 +41,10 @@
         <a href="#cat-ui-interaction" class="nav-link">UI Interaction <span class="count">(4)</span></a>
         <a href="#cat-uv-mapping" class="nav-link">UV Mapping <span class="count">(4)</span></a>
         <a href="#cat-hytale-integration" class="nav-link">Hytale Integration <span class="count">(12)</span></a>
+        <a href="#cat-silent-io-fork" class="nav-link">Silent IO (fork) <span class="count">(10)</span></a>
+        <a href="#cat-workflow-extras-fork" class="nav-link">Workflow Extras (fork) <span class="count">(15)</span></a>
+        <a href="#cat-attachment-points-fork" class="nav-link">Attachment Points (fork) <span class="count">(2)</span></a>
+        <a href="#cat-selection-fork" class="nav-link">Selection (fork) <span class="count">(1)</span></a>
       </div>
     </nav>
 
@@ -49,7 +53,7 @@
         <h1>Blockbench MCP Plugin</h1>
         <p class="subtitle">API Reference — v1.6.0</p>
         <nav class="stats">
-          <a href="#tools"><strong>110</strong> tools (42 stable, 68 experimental)</a>
+          <a href="#tools"><strong>139</strong> tools (64 stable, 75 experimental)</a>
           <a href="#prompts"><strong>6</strong> prompts</a>
           <a href="#resources"><strong>12</strong> resources</a>
         </nav>
@@ -1743,7 +1747,7 @@
         </div>
       </div>
       <p class="card-title">Export Model</p>
-      <p class="card-desc">Compiles the current project through the named codec and returns the result as text. Optionally writes the compiled content to a filesystem path (requires user permission in Blockbench v5.0+). Use `list_export_formats` first to discover codec IDs.</p>
+      <p class="card-desc">Compiles the current project through the named codec and returns the result as text (or base64 for binary codecs). Optionally writes the compiled content to a filesystem path (requires user permission in Blockbench v5.0+). Awaits async codecs (e.g. glTF/GLB in Blockbench 5.x). Use `list_export_formats` first to discover codec IDs. For glTF/GLB specifically, `export_gltf_silent` is a convenience wrapper with typed `embed_textures` / `animations` options.</p>
       <div class="overflow-x">
         <table class="param-table">
       <thead>
@@ -1925,6 +1929,40 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Path to the GeoJSON file or data URL, or the GeoJSON string itself.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-from_java_model" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">from_java_model</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Import Java Model</p>
+      <p class="card-desc">Imports a raw Minecraft Java block/item model (.json with `elements`) programmatically — no file dialog. Accepts inline JSON, an http(s) URL, or a filesystem path. Returns a JSON summary (project name, format, element/cube counts). Wraps the `java_block` codec; for Bedrock geometry use `from_geo_json` instead.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">model</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">A Minecraft Java model as an inline JSON string, an http(s) URL, or an absolute filesystem path to a .json file (e.g. a mod's `models/item/*.json`). Raw element models — top-level `elements` with from/to/faces, like Hardt's Guns viewmodels — import directly. Models that only reference a `parent` import what they contain, but the parent's geometry is NOT resolved unless those assets are present.</td>
+    </tr><tr>
+      <td class="col-name">import_to_current_project</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">false (default): open the model in a NEW Java Block/Item project tab, mirroring File &gt; Import. true: add the model's elements into the currently open project as a new group (a project must already be open; the current project's name/export settings are left untouched). <span class="param-meta">(default: <code>false</code>)</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4464,6 +4502,950 @@
       </div>
     </div>
         </section>
+<section id="cat-silent-io-fork" class="category-section">
+          <h3 class="category-title">Silent IO (fork)</h3>
+          <div id="tool-save_project_silent" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">save_project_silent</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Save Project Silently</p>
+      <p class="card-desc">Save the current project as .bbmodel to a specific path WITHOUT showing the OS-native save dialog. Replaces `trigger_action(save_project)` for non-interactive workflows.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute filesystem path to write to. Parent directory must exist.</td>
+    </tr><tr>
+      <td class="col-name">compressed</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Legacy LZUTF8 compression. Modern Blockbench (5.x) writes .bbmodel as plain JSON — leave false unless you specifically need the legacy `&lt;lz&gt;`-prefixed format. If true and LZUTF8 is unavailable in the running Blockbench, the call throws (no silent fallback). <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-export_gltf_silent" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">export_gltf_silent</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Export glTF Silently</p>
+      <p class="card-desc">Export the current project as glTF/GLB to a specific path WITHOUT a dialog. Replaces `trigger_action(export_gltf)` for non-interactive workflows. Convenience wrapper over the glTF codec with typed `embed_textures` / `animations` options; for arbitrary formats use the general `export_model` tool.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute filesystem path to write the .glb / .gltf to.</td>
+    </tr><tr>
+      <td class="col-name">embed_textures</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Embed texture data inline in the glTF (recommended for Godot). <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">animations</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Include animations in the export. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-force_backup_now" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">force_backup_now</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Force Backup Now</p>
+      <p class="card-desc">Force Blockbench to write a backup .bbmodel to its auto-save folder immediately. Useful when the agent needs the latest state but the 10-minute auto-save hasn't fired yet.</p>
+      <div class="overflow-x">
+        <p class="empty-params">No parameters</p>
+      </div>
+    </div>
+<div id="tool-set_project_resolution" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">set_project_resolution</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Set Project Resolution</p>
+      <p class="card-desc">Set the project's texture_width and texture_height. UV coordinates passed to `place_cube(faces[].uv)` are interpreted in this coordinate space — set this to match your texture/atlas pixel size BEFORE placing cubes with explicit UVs.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">width</td>
+      <td class="col-type">number</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Project's texture_width — controls the UV coordinate space. <span class="param-meta">[min: 16, max: 4096]</span></td>
+    </tr><tr>
+      <td class="col-name">height</td>
+      <td class="col-type">number</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Project's texture_height — controls the UV coordinate space. <span class="param-meta">[min: 16, max: 4096]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-delete_texture" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">delete_texture</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Delete Texture</p>
+      <p class="card-desc">Remove a texture from the project. Useful for cleaning up orphan textures before export.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Texture UUID, name, or numeric id.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-switch_to_tab" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">switch_to_tab</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Switch Mode Tab</p>
+      <p class="card-desc">Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">tab</td>
+      <td class="col-type">&quot;edit&quot; | &quot;paint&quot; | &quot;animate&quot; | &quot;display&quot; | &quot;pose&quot;</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats).</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-get_project_state" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">get_project_state</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Get Project State</p>
+      <p class="card-desc">Return the current project's metadata: name, format, save path, texture resolution, element/texture/animation counts, current tab. Useful for diagnostics.</p>
+      <div class="overflow-x">
+        <p class="empty-params">No parameters</p>
+      </div>
+    </div>
+<div id="tool-open_project_file" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">open_project_file</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Open Project File</p>
+      <p class="card-desc">Load an existing .bbmodel from disk into the running Blockbench instance, replacing the currently open project. Mirror of `save_project_silent` — handles both LZUTF8-compressed and plain-JSON .bbmodel files. Use this to iterate on previously saved assets without manual File→Open.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute filesystem path to a .bbmodel file. Loads it as the active project, replacing any currently open project's contents.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-export_texture_to_png" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">export_texture_to_png</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Export Texture to PNG</p>
+      <p class="card-desc">Write a single project texture to disk as a standalone PNG. Reads the texture's composited canvas (so layered textures are flattened on export). Use this to bake an in-Blockbench atlas back out to disk for Godot import.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">texture_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Texture UUID, name, or numeric id to export.</td>
+    </tr><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute filesystem path to write the PNG to. Parent directory must exist.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-install_plugin_from_path" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">install_plugin_from_path</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Install Plugin From Path</p>
+      <p class="card-desc">Install or replace a Blockbench plugin from a local .js file with source='file'. Survives restarts (unlike URL-source which auto-redownloads). Use to hot-swap fork builds without UI clicks: after `bun run build`, call this with the dist/mcp.js path. CAVEAT: replacing the running MCP plugin causes a brief MCP server disconnect (~200 ms-1 s) — reconnect via /mcp afterwards.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute filesystem path to the plugin's compiled .js file (e.g. the fork's dist/mcp.js). The plugin is registered with source='file' so future Blockbench restarts won't auto-overwrite it from a URL source.</td>
+    </tr><tr>
+      <td class="col-name">plugin_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Optional plugin id. If omitted, derived from the filename (e.g. 'mcp.js' → 'mcp'). For replacing the MCP plugin itself, pass 'mcp' or omit.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+        </section>
+<section id="cat-workflow-extras-fork" class="category-section">
+          <h3 class="category-title">Workflow Extras (fork)</h3>
+          <div id="tool-mirror_elements" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">mirror_elements</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Mirror Elements</p>
+      <p class="card-desc">Mirror elements across an axis. Saves token + ensures geometric symmetry for paired weapon/character parts. With duplicate=true, creates a mirrored copy; with duplicate=false, flips in-place.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">axis</td>
+      <td class="col-type">&quot;x&quot; | &quot;y&quot; | &quot;z&quot;</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Axis to mirror across (world axis through origin).</td>
+    </tr><tr>
+      <td class="col-name">element_ids</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Element UUIDs or names to mirror. If omitted, mirrors current selection.</td>
+    </tr><tr>
+      <td class="col-name">duplicate</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">If true, duplicates the elements before mirroring (keeps both halves). If false, mirrors in-place. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-set_origin" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">set_origin</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Set Origin</p>
+      <p class="card-desc">Set or recalculate the pivot point of an element. Critical for animations — wrong origin = rotation pivots from world center instead of joint.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">element_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Cube/Mesh UUID or name.</td>
+    </tr><tr>
+      <td class="col-name">origin</td>
+      <td class="col-type">number[] | &quot;geometry_center&quot; | &quot;world_origin&quot; | &quot;parent_group&quot;</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Either explicit [x,y,z] coords, or one of: 'geometry_center' (center of element bounds), 'world_origin' ([0,0,0]), 'parent_group' (the parent group's origin).</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-add_reference_image" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">add_reference_image</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-openworld">open-world</span>
+        </div>
+      </div>
+      <p class="card-title">Add Reference Image</p>
+      <p class="card-desc">Add a reference image to the viewport as a backdrop plane. Useful for matching proportions to concept art / screenshot.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute filesystem path to a PNG/JPG image.</td>
+    </tr><tr>
+      <td class="col-name">position</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">World-space [x, y, z] position to place the image plane. <span class="param-meta">(default: <code>[0,0,0]</code>) [minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">scale</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Image scale multiplier. <span class="param-meta">(default: <code>1</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">axis</td>
+      <td class="col-type">&quot;x&quot; | &quot;y&quot; | &quot;z&quot;</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Axis the reference image plane faces. 'z' = front view, 'x' = side view, 'y' = top view. <span class="param-meta">(default: <code>&quot;z&quot;</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-convert_project" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">convert_project</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Convert Project</p>
+      <p class="card-desc">Convert the current project to a different format (e.g. free → bedrock_block). May lose format-specific data.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">format</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Target format ID from Blockbench's Formats registry (e.g. 'free', 'bedrock_block', 'modded_entity', 'java_block').</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-mesh_bevel_edge" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">mesh_bevel_edge</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Bevel Edge</p>
+      <p class="card-desc">Bevel selected mesh edges. Adds a chamfer of given width.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">mesh_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Mesh UUID or name.</td>
+    </tr><tr>
+      <td class="col-name">edge_keys</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Edge keys (Mesh stores edges as 'vertexA_vertexB' strings) to bevel.</td>
+    </tr><tr>
+      <td class="col-name">width</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Bevel width in units. <span class="param-meta">(default: <code>0.5</code>) [min: 0.01, max: 10]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-mesh_inset_face" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">mesh_inset_face</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Inset Face</p>
+      <p class="card-desc">Inset selected mesh faces by the given distance.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">mesh_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Mesh UUID or name.</td>
+    </tr><tr>
+      <td class="col-name">face_keys</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Face keys to inset.</td>
+    </tr><tr>
+      <td class="col-name">inset</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Inset distance in units. <span class="param-meta">(default: <code>0.5</code>) [min: 0.01, max: 10]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-mesh_loop_cut" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">mesh_loop_cut</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Loop Cut</p>
+      <p class="card-desc">Loop-cut a mesh face into N strips.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">mesh_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Mesh UUID or name.</td>
+    </tr><tr>
+      <td class="col-name">face_key</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Face key on the mesh to start the loop cut from.</td>
+    </tr><tr>
+      <td class="col-name">cuts</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Number of cuts to make in the loop. <span class="param-meta">(default: <code>1</code>) [min: 1, max: 10]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-align_elements" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">align_elements</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Align Elements</p>
+      <p class="card-desc">Align two or more elements along an axis (min/center/max bounds).</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">element_ids</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Two or more cube/mesh UUIDs or names. <span class="param-meta">[minItems: 2]</span></td>
+    </tr><tr>
+      <td class="col-name">axis</td>
+      <td class="col-type">&quot;x&quot; | &quot;y&quot; | &quot;z&quot;</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Axis to align along.</td>
+    </tr><tr>
+      <td class="col-name">mode</td>
+      <td class="col-type">&quot;min&quot; | &quot;center&quot; | &quot;max&quot;</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">min: align to lowest bounds, center: align to middle, max: align to highest bounds.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-distribute_elements" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">distribute_elements</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Distribute Elements</p>
+      <p class="card-desc">Distribute three or more elements evenly along an axis.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">element_ids</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Three or more cube/mesh UUIDs or names. <span class="param-meta">[minItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">axis</td>
+      <td class="col-type">&quot;x&quot; | &quot;y&quot; | &quot;z&quot;</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Axis to distribute along.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-set_group_visibility" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">set_group_visibility</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Set Group Visibility</p>
+      <p class="card-desc">Show or hide a group.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">group_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Group UUID or name.</td>
+    </tr><tr>
+      <td class="col-name">visible</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">True to show, false to hide.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-lock_group" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">lock_group</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Lock Group</p>
+      <p class="card-desc">Lock or unlock a group (prevents accidental edits to its children).</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">group_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Group UUID or name.</td>
+    </tr><tr>
+      <td class="col-name">locked</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">True to lock (prevent edits), false to unlock.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-select_by_pattern" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">select_by_pattern</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Select by Pattern</p>
+      <p class="card-desc">Select all elements whose name matches a regex pattern. Returns the list of matched UUIDs.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">pattern</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Regex pattern to match against element names.</td>
+    </tr><tr>
+      <td class="col-name">type</td>
+      <td class="col-type">&quot;all&quot; | &quot;cubes&quot; | &quot;meshes&quot; | &quot;groups&quot;</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Element type to filter. <span class="param-meta">(default: <code>&quot;all&quot;</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-read_setting" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">read_setting</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Read Setting</p>
+      <p class="card-desc">Read a Blockbench setting by key. Returns the current value as a string.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">key</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Blockbench setting key (e.g. 'autosave_interval', 'export_compressed', 'theme').</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-write_setting" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">write_setting</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Write Setting</p>
+      <p class="card-desc">Write a Blockbench setting. Useful for changing autosave_interval, theme, default formats, etc. without going through the UI.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">key</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Blockbench setting key.</td>
+    </tr><tr>
+      <td class="col-name">value</td>
+      <td class="col-type">string,number,boolean</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">New value for the setting.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-bind_mesh_face_textures" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">bind_mesh_face_textures</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Bind Mesh Face Textures</p>
+      <p class="card-desc">Bind a texture to mesh faces. Workaround for upstream `place_mesh` and `apply_texture` not setting `face.texture` on mesh elements (only sets UV). Without binding, mesh faces render as the untextured pink/cyan pattern. Pass face_keys=null to bind every face.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">mesh_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Mesh UUID or name.</td>
+    </tr><tr>
+      <td class="col-name">texture</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Texture UUID, name, or id to bind to the mesh's faces.</td>
+    </tr><tr>
+      <td class="col-name">face_keys</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Specific face keys to bind. If omitted, binds ALL faces of the mesh.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+        </section>
+<section id="cat-attachment-points-fork" class="category-section">
+          <h3 class="category-title">Attachment Points (fork)</h3>
+          <div id="tool-create_locator" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">create_locator</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Create Locator</p>
+      <p class="card-desc">Create a Locator (named attachment point) in the outliner. Locators export as named nodes in glTF and become Marker3D-equivalents in Godot — use them for muzzle points, ejection ports, footstep origins, particle origins, audio emitters, etc.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">name</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Locator name. Conventionally lowercase_snake_case (e.g. 'muzzle_flash', 'ejection_port'). Becomes the node name in glTF export.</td>
+    </tr><tr>
+      <td class="col-name">position</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Locator position [x, y, z] in project coordinates. <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">parent</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Parent group/bone UUID or name. Defaults to 'root'. For viewmodel attachments pass the relevant bone (e.g. 'wpn_barrel'). <span class="param-meta">(default: <code>&quot;root&quot;</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-create_null_object" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">create_null_object</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Create Null Object</p>
+      <p class="card-desc">Create a NullObject (invisible rigging node) in the outliner. Primary use is as an IK target for hand/foot constraints on rigged characters. Pass `ik_target` to wire it to a bone's IK chain.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">name</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">NullObject name. Conventionally describes the IK role (e.g. 'ik_target_hand_l', 'ik_target_foot_r').</td>
+    </tr><tr>
+      <td class="col-name">position</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">NullObject position [x, y, z] in project coordinates. <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">parent</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Parent group/bone UUID or name. Defaults to 'root'. <span class="param-meta">(default: <code>&quot;root&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">ik_target</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Optional UUID/name of the bone this NullObject should serve as IK target for. Wires the IK chain endpoint.</td>
+    </tr><tr>
+      <td class="col-name">lock_ik_target_rotation</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">If true, the IK target's rotation is locked to its rest orientation (free chain otherwise). <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+        </section>
+<section id="cat-selection-fork" class="category-section">
+          <h3 class="category-title">Selection (fork)</h3>
+          <div id="tool-get_selection" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">get_selection</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Get Current Selection</p>
+      <p class="card-desc">Read the current Blockbench selection across all levels: outliner elements (cubes, meshes, groups, locators, null objects), mesh sub-selections (vertices/edges/faces per mesh), active group, active animation, current mode and tool. Read-only diagnostic for the agent-user handoff workflow ('paint the selected face red', 'extrude the picked edge').</p>
+      <div class="overflow-x">
+        <p class="empty-params">No parameters</p>
+      </div>
+    </div>
+        </section>
       </section>
 
       <section id="prompts" class="doc-section">
@@ -4675,7 +5657,7 @@
       </section>
 
       <footer class="page-footer">
-        Generated 2026-05-24T23:22:24.118Z from Zod schemas
+        Generated 2026-05-25T08:42:27.832Z from Zod schemas
       </footer>
     </main>
   </div>

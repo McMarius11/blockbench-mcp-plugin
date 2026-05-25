@@ -6,6 +6,17 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ---
 
+## [unreleased] — 2026-05-25
+
+### Added — programmatic Minecraft Java model import (`server/tools/import.ts`, `lib/java-model.ts`, `lib/java-model.test.ts`)
+
+- **`from_java_model(model, import_to_current_project?)`** — imports a raw Java block/item model (`.json` with top-level `elements`/`from`/`to`/`faces`, e.g. mod viewmodels like Hardt's Guns) without the File > Import OS dialog. Wraps `Codecs.java_block.load`, which runs `setupProject(java_block)` + `parse` internally. `model` accepts inline JSON, an `http(s)` URL, or a filesystem path (closes the gap in the upstream `from_geo_json`, whose docstring claims "file path" but only fetches `http(s)`). Default opens a new project tab; `import_to_current_project: true` merges into the open project. Passes `no_file: true` when importing into the current project (or when there's no real file backing the model) so the codec's `Project.name`/`export_path`/recent-project side effects never clobber the open project — the texture path is still forwarded to `parse` so texture references resolve. Returns a JSON summary instead of `from_geo_json`'s 3 s screenshot. **STABLE** (verified live against Blockbench 5.x via the running codec). **API symbol:** `Codecs.java_block.load(model, {path}, {import_to_current_project, no_file})`.
+- **`lib/java-model.ts`** — pure, Blockbench-free helpers: `classifyModelSource` (inline JSON vs `http(s)` URL vs filesystem path, incl. `file:` URLs and Windows drive paths) and `assertJavaModelShape` (mirrors the codec's `elements`/`parent`/`display`/`textures` guard, but throws a real error instead of the silent UI message box the codec shows — which an MCP client can't see).
+- **`lib/java-model.test.ts`** — 18 unit tests via `bun test` covering source classification and shape validation.
+- **`scripts/smoke_test.py`** — group `[12/12]` exercises inline-JSON-into-new-tab, real-`.json`-file-into-current-project, and both validation error paths.
+
+---
+
 ## [unreleased] — 2026-05-17
 
 ### Changed — session inactivity timeout 5min → 60min (`lib/sessions.ts`)

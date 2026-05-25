@@ -105,7 +105,10 @@ function convertResourceSpec(spec: ResourceSpec): ResourceDocEntry {
 // ============================================================================
 
 function escapeHtml(str: string): string {
-  return str
+  // Coerce defensively: getTypeLabel can return a non-string for JSON-Schema
+  // `type` arrays (e.g. nullable fields typed `["string", "null"]`), which
+  // would otherwise throw "str.replace is not a function".
+  return String(str ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
