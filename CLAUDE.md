@@ -12,7 +12,7 @@ This is the `mcmarius/extensions` fork of `jasonjgardner/blockbench-mcp-plugin`.
    - `lib/mesh-analysis.test.ts` — pure-function unit tests via `bun test` (~140 ms, no Blockbench needed)
    - `scripts/smoke_test.py` — 37 integration assertions against the live MCP HTTP server (~2 s, needs Blockbench running with the fork plugin loaded)
    - Run BOTH before committing changes that touch `server/tools/*.ts`.
-4. **Fork-only tools are listed in `README.md`** Quick reference table — 30+ tools across silent file I/O, attachment points, plugin hot-swap, animation CRUD, mesh inspector, topology selection, UV islands.
+4. **Fork-only tools are listed in `README.md`** Quick reference table — 30+ tools across silent file I/O, attachment points, plugin hot-swap, animation CRUD, mesh inspector, topology selection, UV islands, Java model import.
 5. **Plugin is installed with `source: "file"`** pointing at `dist/mcp.js` of THIS clone. Hot-swap workflow: `bun run build` → `mcp__blockbench__install_plugin_from_path("/abs/path/to/dist/mcp.js")` → MCP reconnects in <1 s. Or **Ctrl+J in Blockbench** for manual reload.
 6. **Architecture split**:
    - `server/tools/*.ts` — MCP-tool wrappers (Schema → ToolSpec → createTool with Undo + Canvas)
