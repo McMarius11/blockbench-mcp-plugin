@@ -131,6 +131,20 @@ export const boneRiggingParameters = z.object({
     .describe("Bone configuration data."),
 });
 
+export const getBoneTransformsAtTimeParameters = z.object({
+  animation_id: animationIdOptionalSchema,
+  time: z
+    .number()
+    .min(0)
+    .describe("Time in seconds at which to sample the bone transforms."),
+  bones: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Bone/group names to sample. Omit to return every animated bone in the animation."
+    ),
+});
+
 export const animationTimelineParameters = z.object({
   action: z
     .enum([
@@ -301,7 +315,15 @@ export const manageAnimationsParameters = z
 export const animationToolDocs: ToolSpec[] = [
   {
     name: "create_animation",
-    description: "Creates a new animation with keyframes for bones.",
+    description:
+      "Creates a new animation with keyframes for bones. Rotation values are " +
+      "in DEGREES, XYZ Euler order, in the bone's LOCAL space — the same " +
+      "visual values Blockbench shows in the bone rotation fields. They " +
+      "round-trip 1:1: pass the pose you want to see (e.g. [0,45,0] = 45° " +
+      "around Y) and no axis inversion is applied (the Bedrock-format X/Y " +
+      "negation is handled internally; see issue #2). Position is in the same " +
+      "local space, units = Blockbench units. `scale` accepts a single number " +
+      "(uniform) or [x,y,z]. `manage_keyframes` uses the identical convention.",
     annotations: {
       title: "Create Animation",
       destructiveHint: true,
@@ -385,6 +407,14 @@ export const animationToolDocs: ToolSpec[] = [
     parameters: manageAnimationsParameters,
     status: STATUS_STABLE,
   },
+  {
+    name: "get_bone_transforms_at_time",
+    description:
+      "Samples interpolated bone transforms (position, rotation in DEGREES, scale) at a given time in seconds — numeric animation QA without screenshot heuristics. Rotation uses the same 1:1 visual-euler convention as create_animation. Returns one entry per animated bone (or only the requested `bones`). Read-only: the timeline cursor is restored afterward. Use for loop-pop checks (compare t=0 vs t=length) or rest-pose verification.",
+    annotations: { title: "Get Bone Transforms At Time", readOnlyHint: true },
+    parameters: getBoneTransformsAtTimeParameters,
+    status: STATUS_STABLE,
+  },
 ];
 
 export function registerAnimationTools() {
@@ -407,7 +437,16 @@ createTool(
                 (acc.position ??= {})[timeKey] = keyframe.position;
               }
               if (keyframe.rotation) {
-                (acc.rotation ??= {})[timeKey] = keyframe.rotation;
+                // `create_animation` writes a Bedrock-format animation (format
+                // 1.8.0) and hands it to `Animator.loadFile`. Blockbench's
+                // Bedrock parser negates the X and Y rotation components on
+                // import (left-handed convention), so a raw pass-through stored
+                // poses mirrored on X/Y while Z stayed correct (issue #2).
+                // Pre-negate X/Y here so the caller passes plain visual-euler
+                // degrees and they round-trip 1:1 — matching `manage_keyframes`,
+                // which uses the native `createKeyframe` API with no inversion.
+                const [rx, ry, rz] = keyframe.rotation;
+                (acc.rotation ??= {})[timeKey] = [-rx, -ry, rz];
               }
               if (keyframe.scale) {
                 (acc.scale ??= {})[timeKey] = keyframe.scale;
@@ -1361,5 +1400,78 @@ createTool(
       },
     },
     animationToolDocs[7].status
+  );
+
+  createTool(
+    animationToolDocs[8].name,
+    {
+      ...animationToolDocs[8],
+      async execute({ animation_id, time, bones }) {
+        const animation = animation_id
+          ? Animation.all.find(
+              (a) =>
+                a.uuid === animation_id ||
+                a.name === animation_id ||
+                a.name.endsWith(animation_id)
+            )
+          : Animation.selected;
+
+        if (!animation) {
+          throw new Error(
+            "No animation found or selected. Pass animation_id or select an animation first."
+          );
+        }
+
+        // @ts-ignore - select() may be absent on very old versions
+        animation.select?.();
+
+        const wanted = bones && bones.length ? new Set(bones) : null;
+        // @ts-ignore - Timeline is a Blockbench global
+        const prevTime = Timeline.time;
+        // @ts-ignore
+        Timeline.time = time;
+
+        const result: Record<string, unknown> = {};
+        for (const uuid of Object.keys(animation.animators ?? {})) {
+          const animator = animation.animators[uuid] as {
+            name?: string;
+            rotation?: unknown[];
+            position?: unknown[];
+            scale?: unknown[];
+            interpolate?: (channel: string, allowExpression?: boolean) => number[];
+            getGroup?: () => { name?: string } | undefined;
+          };
+          if (!animator || typeof animator.interpolate !== "function") continue;
+
+          const group = animator.getGroup?.() ?? Group.all.find((g: Group) => g.uuid === uuid);
+          const boneName = animator.name ?? group?.name ?? uuid;
+          if (wanted && !wanted.has(boneName)) continue;
+
+          result[boneName] = {
+            position: animator.position?.length
+              ? animator.interpolate("position", true)
+              : [0, 0, 0],
+            rotation: animator.rotation?.length
+              ? animator.interpolate("rotation", true)
+              : [0, 0, 0],
+            scale: animator.scale?.length
+              ? animator.interpolate("scale", true)
+              : [1, 1, 1],
+          };
+        }
+
+        // Restore the timeline cursor — this tool is read-only.
+        // @ts-ignore
+        Timeline.time = prevTime;
+        Animator.preview();
+
+        return JSON.stringify(
+          { animation: animation.name, time, bones: result },
+          null,
+          2
+        );
+      },
+    },
+    animationToolDocs[8].status
   );
 }

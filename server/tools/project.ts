@@ -74,6 +74,27 @@ export function registerProjectTools() {
           children: g.children?.length ?? 0,
         }));
 
+      // Camera state — lets clients read back the zoom that `set_camera_angle`
+      // now preserves (issue #3) without resorting to `risky_eval`.
+      // @ts-ignore - Preview is a Blockbench global; camPers/camOrtho untyped
+      const preview = typeof Preview !== "undefined" ? Preview.selected : null;
+      const camera = preview
+        ? {
+            // @ts-ignore
+            projection: preview.isOrtho ? "orthographic" : "perspective",
+            // @ts-ignore
+            zoom: preview.isOrtho
+              ? // @ts-ignore
+                preview.camOrtho?.zoom ?? null
+              : // @ts-ignore
+                preview.camPers?.zoom ?? null,
+            // @ts-ignore
+            position: preview.camera?.position?.toArray?.() ?? null,
+            // @ts-ignore
+            target: preview.controls?.target?.toArray?.() ?? null,
+          }
+        : null;
+
       return JSON.stringify(
         {
           project: {
@@ -97,6 +118,7 @@ export function registerProjectTools() {
             outliner_elements: Outliner.elements.length,
           },
           root_groups: rootGroups,
+          camera,
         },
         null,
         2

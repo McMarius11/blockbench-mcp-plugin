@@ -6,6 +6,45 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ---
 
+## [unreleased] — 2026-06-08 — maintainer issue batch (#2–#16)
+
+Addresses the issue batch filed from the Asset Generator Blockbench pipeline (own fork issues #2–#16). All items verified live against Blockbench 5.1.x and covered by smoke group `[17/17]` + 14 new `bun test` units.
+
+### Fixed — P0/P2 tool bugs (`server/tools/animation.ts`, `camera.ts`, `project.ts`, `ui.ts`)
+
+- **`create_animation` rotation X/Y inversion (#2)** — the tool writes a Bedrock-format animation (`1.8.0`) and loads it via `Animator.loadFile`, whose parser negates the X/Y rotation components on import (left-handed convention). Rotations were therefore stored mirrored on X/Y (Z correct), producing wrong poses unless the caller pre-flipped (the pipeline's `_spec_rot`). Now pre-negates X/Y so callers pass plain **visual-euler degrees** that round-trip 1:1 — consistent with `manage_keyframes` (native `createKeyframe`, never inverted). Live-verified `[0,45,0]`, `[30,0,0]`, `[0,0,-20]` all store 1:1. `_spec_rot` workarounds can be removed downstream.
+- **`set_camera_angle` resets `camera.zoom` (#3)** — `loadAnglePreset` drops zoom when the preset carries none, breaking multi-view QA framing. Now snapshots per-projection zoom (`camPers`/`camOrtho`) and restores it (zoom-neutral angle change), plus a new optional `zoom` param for reproducible framing. `get_project_info` gains a `camera` block (projection/zoom/position/target) so zoom is queryable without `risky_eval`.
+- **`risky_eval` rejected comments (#4)** — a Zod refine blocked `//` and `/* */` (and `https://` in strings). Relaxed to only reject `console.*` calls (whose output isn't captured); the runtime never stripped anything. Comments now pass through.
+
+### Added — bulk inspection & query tools (`server/tools/element.ts`)
+
+- **`export_model_structure(scope, group?, include_animations?, include_faces?, max_elements?)`** — one-shot JSON dump of project + groups + elements (+ optional animation summary), replacing dozens of `get_element_info` roundtrips; the natural `before`/`after` input to `compare_models` (#5).
+- **`get_bounding_box(target, group_id?, coordinate_space?)`** — aggregated `{min,max,center,extents}` for selection/group/project/visible, in `world` (THREE `Box3`, rotation-aware — for auto-framing) or `local` space (#6).
+- **`get_element_statistics(scope, group?)`** — totals, cube-count-by-texture, size histogram, triangle estimate (cubes = 2/enabled-face, meshes fan-triangulated), cubes-per-group (#12).
+- **`highlight_elements(ids, color?, duration_ms?, clear_previous?)`** — non-destructive viewport highlight: via selection, or with an optional hex `color` drawing a temporary `THREE.Box3Helper` box overlay around each element (never touches geometry/materials; colored overlays self-clean after `duration_ms`, defaulting to a 2000 ms flash). Live-verified the overlay leaves zero leftover scene helpers (#10).
+- **`group_by_criteria(group_name, parent_group?, …filters, limit?)`** — match (name/type/region/texture) then move into a NEW group in one step; the write-side companion to `find_elements_by_criteria` (#11).
+- **`find_elements_by_criteria` extended (#9)** — added `texture_name`/`texture_uuid` (face-texture match), `bbox_overlaps` (cube from/to box intersects a region, not just the center), and `name_prefix`/`name_suffix`.
+
+### Added — animation sampling (`server/tools/animation.ts`)
+
+- **`get_bone_transforms_at_time(animation_id?, time, bones?)`** — interpolated per-bone position/rotation(°)/scale at a time, via `BoneAnimator.interpolate` at `Timeline.time`; read-only (cursor restored). For numeric anim QA (loop-pop, rest-pose checks) without screenshot heuristics. Same 1:1 rotation convention as `create_animation` (#7).
+
+### Added — model diff & UV QA (`server/tools/analysis.ts`, `lib/model-analysis.ts`, `lib/model-analysis.test.ts`)
+
+- **`compare_models(before, after?)`** — diffs two `export_model_structure` dumps (or `before` vs the current project) by UUID: added / removed / renamed / reparented elements and groups, plus per-face UV changes. Pure `diffModelStructure` in `lib/` (#13).
+- **`find_uv_overlaps` / `uv_island_list` / `uv_density_per_face`** — UV QA over cube face rects + mesh per-vertex UV bounds, bucketed per texture (overlaps across different atlases are ignored). Pure `findUvOverlaps` / `listUvIslands` / `uvDensityPerFace` in `lib/` (#14).
+- **`lib/model-analysis.ts`** — Blockbench-free algorithms (structural diff + UV rect math); **`lib/model-analysis.test.ts`** — 14 `bun test` units.
+
+### Changed — extended `capture_screenshot` (`server/tools/camera.ts`, `lib/util.ts`)
+
+- **`capture_screenshot(width?, height?, background?, return_format?, path?)`** — fixed output resolution, `transparent`/hex background, and `return_format: "file"` (writes PNG to `path`) for reproducible QA frames / contact sheets. Live renderer state (size + clear color/alpha) is restored in a `finally` block. The no-option path still uses the fast original capture (#8).
+
+### Docs
+
+- `create_animation` description now states rotation units (degrees), Euler order (XYZ), local space, and the 1:1 convention (#15). `place_cube` `group` param documented as a single top-level destination applied to all cubes, with reparenting guidance (#16).
+
+---
+
 ## [unreleased] — 2026-05-25
 
 ### Changed — `from_java_model` gains `assets_root` (correct CIT / resource-pack texture resolution) (`server/tools/import.ts`)

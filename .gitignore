@@ -1,4 +1,4 @@
 node_modules
 dist/
 .claude
-nul
+nulscripts/__pycache__/

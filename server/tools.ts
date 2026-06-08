@@ -23,6 +23,7 @@ import { registerAttachmentTools } from "./tools/attachments";
 import { registerSelectionTools } from "./tools/selection";
 import { registerHistoryTools } from "./tools/history";
 import { registerExportTools } from "./tools/export";
+import { registerAnalysisTools } from "./tools/analysis";
 
 // Core resource registrations
 import { registerValidatorResources } from "./resources/validator";
@@ -34,6 +35,7 @@ import { registerHytalePrompts } from "./prompts/hytale";
 
 // All registration functions - MUST be used to prevent tree-shaking
 const registrationFunctions = [
+  registerAnalysisTools,
   registerAnimationTools,
   registerArmatureTools,
   registerAttachmentTools,

@@ -323,6 +323,99 @@ export function captureScreenshot(project?: string) {
   return imageContent(dataUrl, "image/png");
 }
 
+export interface ScreenshotOptions {
+  width?: number;
+  height?: number;
+  /** "transparent" or a hex color like "#000000" / "#808080". */
+  background?: string;
+  /** "base64" (default, returns image content) or "file" (writes PNG to `path`). */
+  return_format?: "base64" | "file";
+  path?: string;
+}
+
+/**
+ * Renders the 3D preview to a PNG with optional size/background overrides and
+ * either returns it as MCP image content or writes it to disk. The live
+ * renderer state (size, clear color/alpha) is always restored in a finally
+ * block so the editor view is left untouched.
+ */
+export function captureScreenshotAdvanced(opts: ScreenshotOptions) {
+  // @ts-ignore - Preview is a Blockbench global
+  const preview = Preview.selected;
+  if (!preview) {
+    throw new Error("No preview available for the selected project.");
+  }
+  const renderer = preview.renderer as {
+    getSize: (t: unknown) => { x: number; y: number };
+    setSize: (w: number, h: number, updateStyle?: boolean) => void;
+    getClearColor: (t: unknown) => unknown;
+    getClearAlpha: () => number;
+    setClearColor: (c: unknown, a: number) => void;
+  };
+  const canvas = preview.canvas as HTMLCanvasElement;
+
+  // @ts-ignore - THREE is a Blockbench runtime global
+  const prevSize = renderer.getSize(new THREE.Vector2());
+  // @ts-ignore
+  const prevColor = renderer.getClearColor(new THREE.Color());
+  const prevAlpha = renderer.getClearAlpha();
+  const cam = preview.camera as { isPerspectiveCamera?: boolean; aspect?: number; updateProjectionMatrix?: () => void };
+
+  let dataUrl: string | undefined;
+  try {
+    if (opts.background === "transparent") {
+      renderer.setClearColor(prevColor, 0);
+    } else if (opts.background && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(opts.background)) {
+      // @ts-ignore
+      renderer.setClearColor(new THREE.Color(opts.background), 1);
+    }
+
+    if (opts.width && opts.height) {
+      renderer.setSize(opts.width, opts.height, false);
+      if (cam.isPerspectiveCamera) {
+        cam.aspect = opts.width / opts.height;
+        cam.updateProjectionMatrix?.();
+      }
+    }
+
+    // @ts-ignore - Canvas is a Blockbench global; hide gizmos for a clean frame
+    Canvas.withoutGizmos(() => {
+      preview.render();
+      dataUrl = canvas.toDataURL("image/png");
+    });
+  } finally {
+    // Restore live renderer state regardless of success.
+    renderer.setSize(prevSize.x, prevSize.y, false);
+    if (cam.isPerspectiveCamera) {
+      cam.aspect = prevSize.x / prevSize.y;
+      cam.updateProjectionMatrix?.();
+    }
+    renderer.setClearColor(prevColor, prevAlpha);
+    // @ts-ignore - recompute from the DOM so the editor view is pixel-correct
+    preview.resize?.();
+    preview.render();
+  }
+
+  if (!dataUrl) {
+    throw new Error("Failed to capture preview screenshot.");
+  }
+
+  if (opts.return_format === "file") {
+    if (!opts.path) {
+      throw new Error('return_format="file" requires a `path`.');
+    }
+    // @ts-ignore - requireNativeModule is a Blockbench global (v5 native API)
+    const fs = requireNativeModule("fs");
+    const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+    // @ts-ignore - Buffer is available via the Node bridge
+    const buffer = Buffer.from(base64, "base64");
+    fs.writeFileSync(opts.path, buffer);
+    return `Saved screenshot (${opts.width ?? prevSize.x}×${opts.height ?? prevSize.y}) to ${opts.path} (${buffer.length} bytes).`;
+  }
+
+  return imageContent(dataUrl, "image/png");
+}
+
 /**
  * Captures a screenshot of the entire Blockbench application window.
  * Uses Electron's native capturePage API through Blockbench's Screencam.

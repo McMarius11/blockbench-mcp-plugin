@@ -23,6 +23,7 @@ import { silentToolDocs } from "../server/tools/silent";
 import { workflowExtraToolDocs } from "../server/tools/workflow_extra";
 import { attachmentToolDocs } from "../server/tools/attachments";
 import { selectionToolDocs } from "../server/tools/selection";
+import { analysisToolDocs } from "../server/tools/analysis";
 
 export interface CategoryGroup {
   category: string;
@@ -51,6 +52,7 @@ export const toolManifest: CategoryGroup[] = [
   { category: "Workflow Extras (fork)", tools: workflowExtraToolDocs },
   { category: "Attachment Points (fork)", tools: attachmentToolDocs },
   { category: "Selection (fork)", tools: selectionToolDocs },
+  { category: "Analysis & UV QA (fork)", tools: analysisToolDocs },
 ];
 
 // Prompt specs defined inline — server/prompts.ts uses macros that complicate direct import

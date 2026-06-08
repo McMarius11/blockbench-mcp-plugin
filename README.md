@@ -17,9 +17,11 @@ Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner
 | **Cube editing** | `modify_cube_uv` |
 | **Mesh editing** | `flip_mesh_normals`, `inspect_mesh_geometry`, `mesh_bevel_edge`, `mesh_inset_face`, `mesh_loop_cut`, `select_mesh_elements` (extended with topology modes connected/boundary/inverse) |
 | **UV editing** | `uv_island_transform` |
-| **Animation** | `manage_animations` |
+| **Animation** | `manage_animations`, `get_bone_transforms_at_time` |
 | **Selection inspection** | `get_selection` |
-| **Element inspection & organization** | `get_element_info`, `move_to_group` (+ `find_elements_by_criteria` region/face filters) |
+| **Element inspection & organization** | `get_element_info`, `move_to_group`, `export_model_structure`, `get_bounding_box`, `get_element_statistics`, `highlight_elements`, `group_by_criteria` (+ `find_elements_by_criteria` region/face/texture/bbox/prefix filters) |
+| **Model analysis & UV QA** | `compare_models`, `find_uv_overlaps`, `uv_island_list`, `uv_density_per_face` |
+| **Camera (upstream, extended)** | `capture_screenshot` (+ `width`/`height`/`background`/`return_format`), `set_camera_angle` (preserves `zoom` + accepts explicit `zoom`) |
 | **Project I/O** | `convert_project` |
 | **Model import** | `from_java_model` |
 | **Layout** | `align_elements`, `distribute_elements`, `set_group_visibility`, `lock_group` |
