@@ -72,6 +72,35 @@ export const findElementsByCriteriaParameters = z.object({
     .describe(
       "Keep only cubes whose given face (north/south/east/west/up/down) is enabled. Non-cube elements are excluded when set."
     ),
+  name_prefix: z
+    .string()
+    .optional()
+    .describe("Keep only elements whose name starts with this string. Case-sensitive."),
+  name_suffix: z
+    .string()
+    .optional()
+    .describe("Keep only elements whose name ends with this string. Case-sensitive."),
+  texture_name: z
+    .string()
+    .optional()
+    .describe(
+      "Keep only cubes/meshes with at least one face using the texture of this name. Case-insensitive. Non-textured elements are excluded when set."
+    ),
+  texture_uuid: z
+    .string()
+    .optional()
+    .describe(
+      "Keep only cubes/meshes with at least one face using the texture with this UUID (or short numeric id). More precise than `texture_name`."
+    ),
+  bbox_overlaps: z
+    .object({
+      min: vector3Schema.describe("Lower corner [x,y,z] of the query box."),
+      max: vector3Schema.describe("Upper corner [x,y,z] of the query box."),
+    })
+    .optional()
+    .describe(
+      "Keep only cubes whose axis-aligned from/to box INTERSECTS this region (unlike `region_min`/`region_max`, which test only the center point). Meshes and groups are excluded when set."
+    ),
   limit: z
     .number()
     .int()
@@ -80,6 +109,118 @@ export const findElementsByCriteriaParameters = z.object({
     .optional()
     .default(200)
     .describe("Maximum number of results to return."),
+});
+
+export const exportModelStructureParameters = z.object({
+  scope: z
+    .enum(["all", "selection", "group"])
+    .optional()
+    .default("all")
+    .describe("What to export: whole project, current selection, or a named group's subtree."),
+  group: z
+    .string()
+    .optional()
+    .describe("Group UUID or name — required when scope=group."),
+  include_animations: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Include an animation summary (name, length, loop, animated bone count)."),
+  include_faces: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Include per-face data on cubes (uv/texture/rotation/tint/enabled)."),
+  max_elements: z
+    .number()
+    .int()
+    .min(1)
+    .max(10000)
+    .optional()
+    .default(2000)
+    .describe("Cap on exported elements. When exceeded, `truncated` is set true."),
+});
+
+export const getBoundingBoxParameters = z.object({
+  target: z
+    .enum(["selection", "group", "project", "visible"])
+    .describe(
+      "What to measure: current selection, a named group's subtree, the whole project, or only currently-visible elements."
+    ),
+  group_id: z
+    .string()
+    .optional()
+    .describe("Group UUID or name — required when target=group."),
+  coordinate_space: z
+    .enum(["world", "local"])
+    .optional()
+    .default("world")
+    .describe(
+      "`world` = transformed scene-space AABB (accounts for rotation/parent transforms; best for camera framing). `local` = axis-aligned over raw cube from/to and mesh vertices, ignoring element rotation."
+    ),
+});
+
+export const highlightElementsParameters = z.object({
+  ids: z
+    .array(z.string())
+    .min(1)
+    .describe("Element IDs or names to highlight by selecting them in the viewport."),
+  duration_ms: z
+    .number()
+    .int()
+    .min(0)
+    .max(10000)
+    .optional()
+    .default(0)
+    .describe(
+      "If > 0, the previous selection is restored after this many milliseconds (a temporary flash). 0 leaves the highlight selection in place."
+    ),
+  clear_previous: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Replace the current selection (true) or add the highlighted elements to it (false)."),
+});
+
+export const groupByCriteriaParameters = z.object({
+  group_name: z.string().describe("Name for the new group to create."),
+  parent_group: z
+    .string()
+    .optional()
+    .describe('Parent group UUID or name, or "root" for the top level (default).'),
+  name_pattern: z.string().optional().describe("Regex on element names (case-sensitive)."),
+  name_contains: z.string().optional().describe("Case-insensitive substring of element names."),
+  name_prefix: z.string().optional().describe("Element name starts-with filter."),
+  name_suffix: z.string().optional().describe("Element name ends-with filter."),
+  type: z
+    .enum(["cube", "mesh", "any"])
+    .optional()
+    .default("any")
+    .describe("Restrict to a single element type (groups are never moved)."),
+  source_group: z
+    .string()
+    .optional()
+    .describe("Only consider descendants of this group as candidates."),
+  region_min: vector3Schema.optional().describe("Region lower bound (cube center / mesh origin)."),
+  region_max: vector3Schema.optional().describe("Region upper bound (cube center / mesh origin)."),
+  texture_name: z.string().optional().describe("Only elements with a face using this texture name."),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(2000)
+    .optional()
+    .default(500)
+    .describe("Maximum number of elements to move into the new group."),
+});
+
+export const getElementStatisticsParameters = z.object({
+  scope: z
+    .enum(["all", "selection", "group"])
+    .optional()
+    .default("all")
+    .describe("Aggregate over the whole project, current selection, or a named group's subtree."),
+  group: z.string().optional().describe("Group UUID or name — required when scope=group."),
 });
 
 export const moveToGroupParameters = z.object({
@@ -275,7 +416,7 @@ export const elementToolDocs: ToolSpec[] = [
   {
     name: "find_elements_by_criteria",
     description:
-      "Searches the current project for elements matching the given criteria. Supports name pattern matching (regex or substring), type filtering, scoping to a parent group, cube size ranges, and selection scope. Returns element metadata, never modifies state.",
+      "Searches the current project for elements matching the given criteria. Supports name matching (regex, substring, prefix, suffix), type filtering, scoping to a parent group, cube size ranges, selection scope, center-in-region (region_min/max), cube-box intersection (bbox_overlaps), per-face enabled, and texture (texture_name/texture_uuid). All supplied filters are AND-combined. Returns element metadata, never modifies state.",
     annotations: {
       title: "Find Elements by Criteria",
       readOnlyHint: true,
@@ -325,6 +466,46 @@ export const elementToolDocs: ToolSpec[] = [
       destructiveHint: true,
     },
     parameters: moveToGroupParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "export_model_structure",
+    description:
+      "Bulk one-shot JSON dump of the model: project metadata, the full group hierarchy, every element (cube/mesh) with geometry (and per-face data by default), textures, and optionally an animation summary. Scope to the whole project, the current selection, or a group's subtree. Use this for offline analysis, archetype extraction, or as the `before`/`after` input to `compare_models` — it replaces dozens of `get_element_info` roundtrips with a single call. Respects `max_elements` and flags `truncated` when capped.",
+    annotations: { title: "Export Model Structure", readOnlyHint: true },
+    parameters: exportModelStructureParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "get_bounding_box",
+    description:
+      "Returns the aggregated axis-aligned bounding box ({min,max,center,extents}) of the selection, a named group, the whole project, or only visible elements. `world` space accounts for rotations and parent transforms (use for auto-framing screenshots); `local` space is the raw from/to + vertex extent ignoring rotation. Replaces ad-hoc `risky_eval` bbox queries.",
+    annotations: { title: "Get Bounding Box", readOnlyHint: true },
+    parameters: getBoundingBoxParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "highlight_elements",
+    description:
+      "Temporarily highlights elements in the viewport by selecting them (non-destructive — geometry is never modified). With `duration_ms > 0` the prior selection is restored afterward for a brief flash; otherwise the highlight selection persists. Useful for visually confirming `find_elements_by_criteria` results.",
+    annotations: { title: "Highlight Elements", destructiveHint: true },
+    parameters: highlightElementsParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "group_by_criteria",
+    description:
+      "Finds elements matching the given criteria (name/type/region/texture filters) and moves them into a NEW group in one step — the write-side companion to `find_elements_by_criteria`. Speeds up organizing flat imports into logical zones (e.g. receiver/barrel/stock). Creates the group under `parent_group` (default root). Groups themselves are never moved. Returns the new group's UUID and the moved element list.",
+    annotations: { title: "Group Elements by Criteria", destructiveHint: true },
+    parameters: groupByCriteriaParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "get_element_statistics",
+    description:
+      "Aggregated statistics over the model or a subset: total counts, cube count per texture, a cube-size histogram, an estimated triangle count (cubes = 12 tris each minus disabled faces; meshes from face fan-triangulation), and cubes-per-group. Read-only. Use when comparing reference models or budgeting poly counts.",
+    annotations: { title: "Get Element Statistics", readOnlyHint: true },
+    parameters: getElementStatisticsParameters,
     status: STATUS_STABLE,
   },
 ];
@@ -438,6 +619,149 @@ function faceTextureName(face: {
 }): string | null {
   if (!face.texture) return null;
   return face.getTexture?.()?.name ?? String(face.texture);
+}
+
+type Vec3 = [number, number, number];
+
+interface BBox {
+  min: Vec3;
+  max: Vec3;
+  center: Vec3;
+  extents: Vec3;
+}
+
+function cubeAABB(cube: Cube): { min: Vec3; max: Vec3 } {
+  return {
+    min: [
+      Math.min(cube.from[0], cube.to[0]),
+      Math.min(cube.from[1], cube.to[1]),
+      Math.min(cube.from[2], cube.to[2]),
+    ],
+    max: [
+      Math.max(cube.from[0], cube.to[0]),
+      Math.max(cube.from[1], cube.to[1]),
+      Math.max(cube.from[2], cube.to[2]),
+    ],
+  };
+}
+
+function boxesOverlap(aMin: number[], aMax: number[], bMin: number[], bMax: number[]): boolean {
+  for (let i = 0; i < 3; i++) {
+    if (aMax[i] < bMin[i] || aMin[i] > bMax[i]) return false;
+  }
+  return true;
+}
+
+function bboxFromMinMax(min: number[], max: number[]): BBox {
+  const center: Vec3 = [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
+  ];
+  const extents: Vec3 = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  return { min: [min[0], min[1], min[2]], max: [max[0], max[1], max[2]], center, extents };
+}
+
+/** Resolve a texture by UUID/short-id (preferred) or case-insensitive name. */
+function resolveTexture(name?: string, uuid?: string): Texture | null {
+  if (uuid) {
+    return (
+      Texture.all.find((t) => t.uuid === uuid || String(t.id) === uuid) ?? null
+    );
+  }
+  if (name) {
+    const needle = name.toLowerCase();
+    return Texture.all.find((t) => t.name.toLowerCase() === needle) ?? null;
+  }
+  return null;
+}
+
+function elementUsesTexture(el: Cube | Mesh, tex: Texture): boolean {
+  for (const face of Object.values(el.faces ?? {})) {
+    const fid = (face as { texture?: unknown }).texture;
+    if (fid === tex.uuid || fid === tex.id) return true;
+  }
+  return false;
+}
+
+/** World-space AABB via THREE — accounts for rotation and parent transforms. */
+function worldBBox(elements: Array<{ mesh?: unknown }>): BBox | null {
+  // @ts-ignore - THREE is a Blockbench runtime global
+  const box = new THREE.Box3();
+  let any = false;
+  for (const el of elements) {
+    const mesh = el.mesh as { updateMatrixWorld?: (f?: boolean) => void } | undefined;
+    if (!mesh) continue;
+    mesh.updateMatrixWorld?.(true);
+    // @ts-ignore
+    const b = new THREE.Box3().setFromObject(mesh);
+    if (b.isEmpty()) continue;
+    box.union(b);
+    any = true;
+  }
+  if (!any || box.isEmpty()) return null;
+  return bboxFromMinMax(box.min.toArray(), box.max.toArray());
+}
+
+/** Local-space AABB over raw cube from/to and mesh origin+vertices (ignores rotation). */
+function localBBox(cubes: Cube[], meshes: Mesh[]): BBox | null {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  let any = false;
+  for (const c of cubes) {
+    const { min: cm, max: cx } = cubeAABB(c);
+    for (let i = 0; i < 3; i++) {
+      min[i] = Math.min(min[i], cm[i]);
+      max[i] = Math.max(max[i], cx[i]);
+    }
+    any = true;
+  }
+  for (const m of meshes) {
+    const verts = (m as { vertices?: Record<string, number[]> }).vertices ?? {};
+    const o = (m as { origin?: number[] }).origin ?? [0, 0, 0];
+    for (const k of Object.keys(verts)) {
+      const v = verts[k];
+      for (let i = 0; i < 3; i++) {
+        const p = o[i] + v[i];
+        min[i] = Math.min(min[i], p);
+        max[i] = Math.max(max[i], p);
+      }
+      any = true;
+    }
+  }
+  if (!any) return null;
+  return bboxFromMinMax(min, max);
+}
+
+interface ScopeResult {
+  cubes: Cube[];
+  meshes: Mesh[];
+  groups: Group[];
+}
+
+/** Gather elements for an all|selection|group scope. Throws if a named group is missing. */
+function resolveScope(scope: "all" | "selection" | "group", groupRef?: string): ScopeResult {
+  if (scope === "group") {
+    const g = Group.all.find((x: Group) => x.uuid === groupRef || x.name === groupRef);
+    if (!g) {
+      throw new Error(
+        `Group "${groupRef}" not found. Use list_outline to see available groups.`
+      );
+    }
+    return {
+      cubes: Cube.all.filter((c: Cube) => isDescendantOf(c, g)),
+      meshes: Mesh.all.filter((m: Mesh) => isDescendantOf(m, g)),
+      groups: [g, ...Group.all.filter((sg: Group) => sg !== g && isDescendantOf(sg, g))],
+    };
+  }
+  if (scope === "selection") {
+    return {
+      cubes: [...Cube.selected],
+      meshes: [...Mesh.selected],
+      groups: Group.all.filter((g: Group) => g.selected),
+    };
+  }
+  return { cubes: [...Cube.all], meshes: [...Mesh.all], groups: [...Group.all] };
 }
 
 function serializeCube(cube: Cube, includeFaces: boolean): Record<string, unknown> {
@@ -776,6 +1100,11 @@ export function registerElementTools() {
       region_min,
       region_max,
       face_enabled,
+      name_prefix,
+      name_suffix,
+      texture_name,
+      texture_uuid,
+      bbox_overlaps,
       limit,
     }) {
       const regex = safeCompileRegex(name_pattern);
@@ -788,6 +1117,16 @@ export function registerElementTools() {
       if (parent_group && !parentScope) {
         throw new Error(
           `Parent group "${parent_group}" not found. Use list_outline to see available groups.`
+        );
+      }
+
+      const textureFilter =
+        texture_name || texture_uuid
+          ? resolveTexture(texture_name, texture_uuid)
+          : null;
+      if ((texture_name || texture_uuid) && !textureFilter) {
+        throw new Error(
+          `Texture "${texture_uuid ?? texture_name}" not found. Use the textures resource or get_project_info.`
         );
       }
 
@@ -807,7 +1146,20 @@ export function registerElementTools() {
         if (type !== "any" && elType !== type) continue;
         if (regex && !regex.test(el.name)) continue;
         if (needle && !el.name.toLowerCase().includes(needle)) continue;
+        if (name_prefix && !el.name.startsWith(name_prefix)) continue;
+        if (name_suffix && !el.name.endsWith(name_suffix)) continue;
         if (parentScope && !isDescendantOf(el, parentScope)) continue;
+
+        if (textureFilter) {
+          if (!(el instanceof Cube) && !(el instanceof Mesh)) continue;
+          if (!elementUsesTexture(el, textureFilter)) continue;
+        }
+
+        if (bbox_overlaps) {
+          if (!(el instanceof Cube)) continue;
+          const { min, max } = cubeAABB(el);
+          if (!boxesOverlap(min, max, bbox_overlaps.min, bbox_overlaps.max)) continue;
+        }
 
         if (el instanceof Cube && (min_size || max_size)) {
           if (exceedsBounds(cubeSize(el), min_size, max_size)) continue;
@@ -1102,4 +1454,354 @@ export function registerElementTools() {
       );
     },
   }, elementToolDocs[9].status);
+
+  // export_model_structure
+  createTool(elementToolDocs[10].name, {
+    ...elementToolDocs[10],
+    async execute({ scope, group, include_animations, include_faces, max_elements }) {
+      const { cubes, meshes, groups } = resolveScope(scope, group);
+
+      const leaves: Array<Cube | Mesh> = [...cubes, ...meshes];
+      const truncated = leaves.length > max_elements;
+      const elements = leaves
+        .slice(0, max_elements)
+        .map((el) =>
+          el instanceof Cube
+            ? serializeCube(el, include_faces)
+            : serializeMesh(el, false)
+        );
+
+      const fmt = Format as { id?: string; name?: string; display_name?: string } | undefined;
+
+      const out: Record<string, unknown> = {
+        project: {
+          name: Project?.name ?? null,
+          format: fmt?.id ?? null,
+          resolution: [Project?.texture_width ?? null, Project?.texture_height ?? null],
+        },
+        scope,
+        groups: groups.map(serializeGroup),
+        elements,
+        textures: Texture.all.map((t) => ({
+          name: t.name,
+          uuid: t.uuid,
+          id: t.id,
+          width: (t as { width?: number }).width ?? null,
+          height: (t as { height?: number }).height ?? null,
+        })),
+        counts: { groups: groups.length, elements: leaves.length },
+        truncated,
+      };
+
+      if (include_animations) {
+        // @ts-ignore - Animation is a Blockbench global
+        out.animations = (typeof Animation !== "undefined" ? Animation.all : []).map(
+          (a: { name: string; uuid: string; length?: number; loop?: string; animators?: Record<string, unknown> }) => ({
+            name: a.name,
+            uuid: a.uuid,
+            length: a.length ?? null,
+            loop: a.loop ?? null,
+            bone_count: Object.keys(a.animators ?? {}).length,
+          })
+        );
+      }
+
+      return JSON.stringify(out, null, 2);
+    },
+  }, elementToolDocs[10].status);
+
+  // get_bounding_box
+  createTool(elementToolDocs[11].name, {
+    ...elementToolDocs[11],
+    async execute({ target, group_id, coordinate_space }) {
+      let cubes: Cube[];
+      let meshes: Mesh[];
+      let worldNodes: Array<{ mesh?: unknown }>;
+
+      if (target === "group") {
+        const g = Group.all.find((x: Group) => x.uuid === group_id || x.name === group_id);
+        if (!g) {
+          throw new Error(
+            `Group "${group_id}" not found. Use list_outline to see available groups.`
+          );
+        }
+        cubes = Cube.all.filter((c: Cube) => isDescendantOf(c, g));
+        meshes = Mesh.all.filter((m: Mesh) => isDescendantOf(m, g));
+        worldNodes = [g];
+      } else if (target === "selection") {
+        cubes = [...Cube.selected];
+        meshes = [...Mesh.selected];
+        worldNodes = [...cubes, ...meshes];
+      } else if (target === "visible") {
+        cubes = Cube.all.filter((c: Cube) => (c as { visibility?: boolean }).visibility !== false);
+        meshes = Mesh.all.filter((m: Mesh) => (m as { visibility?: boolean }).visibility !== false);
+        worldNodes = [...cubes, ...meshes];
+      } else {
+        cubes = [...Cube.all];
+        meshes = [...Mesh.all];
+        worldNodes = [...cubes, ...meshes];
+      }
+
+      const bbox =
+        coordinate_space === "local"
+          ? localBBox(cubes, meshes)
+          : worldBBox(worldNodes);
+
+      if (!bbox) {
+        return JSON.stringify(
+          { target, coordinate_space, empty: true, message: "No measurable geometry in scope." },
+          null,
+          2
+        );
+      }
+
+      return JSON.stringify({ target, coordinate_space, ...bbox }, null, 2);
+    },
+  }, elementToolDocs[11].status);
+
+  // highlight_elements
+  createTool(elementToolDocs[12].name, {
+    ...elementToolDocs[12],
+    async execute({ ids, duration_ms, clear_previous }) {
+      const elements = ids.map((id: string) => findElementOrThrow(id)) as Array<
+        Cube | Mesh | Group
+      >;
+
+      const prevCubes = [...Cube.selected];
+      const prevMeshes = [...Mesh.selected];
+      const prevGroups = Group.all.filter((g: Group) => g.selected);
+
+      if (clear_previous) {
+        // @ts-ignore - unselect available on element classes
+        Cube.selected.slice().forEach((c: Cube) => c.unselect?.());
+        // @ts-ignore
+        Mesh.selected.slice().forEach((m: Mesh) => m.unselect?.());
+        Group.all.forEach((g: Group) => {
+          if (g.selected) g.selected = false;
+        });
+      }
+
+      for (const el of elements) {
+        if (el instanceof Group) {
+          el.selected = true;
+          continue;
+        }
+        // @ts-ignore - select available on outliner elements
+        el.select?.({ shiftKey: true });
+      }
+      updateSelection();
+      Canvas.updateAll();
+
+      if (duration_ms > 0) {
+        await new Promise((resolve) => setTimeout(resolve, duration_ms));
+        // Restore the prior selection.
+        // @ts-ignore
+        Cube.selected.slice().forEach((c: Cube) => c.unselect?.());
+        // @ts-ignore
+        Mesh.selected.slice().forEach((m: Mesh) => m.unselect?.());
+        Group.all.forEach((g: Group) => {
+          if (g.selected) g.selected = false;
+        });
+        for (const c of prevCubes) {
+          // @ts-ignore
+          c.select?.({ shiftKey: true });
+        }
+        for (const m of prevMeshes) {
+          // @ts-ignore
+          m.select?.({ shiftKey: true });
+        }
+        for (const g of prevGroups) g.selected = true;
+        updateSelection();
+        Canvas.updateAll();
+      }
+
+      return JSON.stringify(
+        {
+          highlighted: elements.map((el) => ({ uuid: el.uuid, name: el.name })),
+          restored: duration_ms > 0,
+        },
+        null,
+        2
+      );
+    },
+  }, elementToolDocs[12].status);
+
+  // group_by_criteria
+  createTool(elementToolDocs[13].name, {
+    ...elementToolDocs[13],
+    async execute({
+      group_name,
+      parent_group,
+      name_pattern,
+      name_contains,
+      name_prefix,
+      name_suffix,
+      type,
+      source_group,
+      region_min,
+      region_max,
+      texture_name,
+      limit,
+    }) {
+      const regex = safeCompileRegex(name_pattern);
+      const needle = name_contains?.toLowerCase() ?? null;
+
+      const sourceScope = source_group
+        ? (Group.all.find((g: Group) => g.uuid === source_group || g.name === source_group) ?? null)
+        : null;
+      if (source_group && !sourceScope) {
+        throw new Error(`Source group "${source_group}" not found.`);
+      }
+
+      const textureFilter = texture_name ? resolveTexture(texture_name) : null;
+      if (texture_name && !textureFilter) {
+        throw new Error(`Texture "${texture_name}" not found.`);
+      }
+
+      const pool: Array<Cube | Mesh> = [
+        ...(type === "mesh" ? [] : Cube.all),
+        ...(type === "cube" ? [] : Mesh.all),
+      ];
+
+      const matched: Array<Cube | Mesh> = [];
+      for (const el of pool) {
+        if (matched.length >= limit) break;
+        if (regex && !regex.test(el.name)) continue;
+        if (needle && !el.name.toLowerCase().includes(needle)) continue;
+        if (name_prefix && !el.name.startsWith(name_prefix)) continue;
+        if (name_suffix && !el.name.endsWith(name_suffix)) continue;
+        if (sourceScope && !isDescendantOf(el, sourceScope)) continue;
+        if (region_min || region_max) {
+          const point =
+            el instanceof Cube ? cubeCenter(el) : ((el as { origin: Vec3 }).origin);
+          if (outsideRegion(point, region_min, region_max)) continue;
+        }
+        if (textureFilter && !elementUsesTexture(el, textureFilter)) continue;
+        matched.push(el);
+      }
+
+      if (!matched.length) {
+        return JSON.stringify(
+          { created: false, reason: "No elements matched — group not created.", moved: 0 },
+          null,
+          2
+        );
+      }
+
+      const parent =
+        !parent_group || parent_group === "root"
+          ? "root"
+          : (getAllGroups().find((g: Group) => g.name === parent_group || g.uuid === parent_group) ?? "root");
+
+      Undo.initEdit({ elements: [], outliner: true, collections: [] });
+      const group = new Group({ name: group_name }).init();
+      group.addTo(parent);
+      for (const el of matched) {
+        // @ts-ignore - addTo accepts a Group
+        el.addTo(group);
+      }
+      Undo.finishEdit("Agent grouped elements by criteria");
+      Canvas.updateAll();
+
+      return JSON.stringify(
+        {
+          created: true,
+          group: { name: group.name, uuid: group.uuid },
+          parent: parent === "root" ? "root" : (parent as Group).name,
+          moved: matched.length,
+          items: matched.map((el) => ({ uuid: el.uuid, name: el.name, type: getElementType(el) })),
+        },
+        null,
+        2
+      );
+    },
+  }, elementToolDocs[13].status);
+
+  // get_element_statistics
+  createTool(elementToolDocs[14].name, {
+    ...elementToolDocs[14],
+    async execute({ scope, group }) {
+      const { cubes, meshes, groups } = resolveScope(scope, group);
+
+      // Cube count by texture name (a cube counts once per distinct texture it uses).
+      const byTexture: Record<string, number> = {};
+      const noTextureKey = "(none)";
+      for (const cube of cubes) {
+        const texNames = new Set<string>();
+        for (const face of Object.values(cube.faces ?? {})) {
+          const name = faceTextureName(face as { texture?: unknown; getTexture?: () => { name?: string } | null });
+          if (name) texNames.add(name);
+        }
+        if (!texNames.size) {
+          byTexture[noTextureKey] = (byTexture[noTextureKey] ?? 0) + 1;
+        } else {
+          for (const n of texNames) byTexture[n] = (byTexture[n] ?? 0) + 1;
+        }
+      }
+
+      // Size histogram by max edge length (Blockbench units).
+      const sizeBuckets: Record<string, number> = {
+        "0-1": 0,
+        "1-2": 0,
+        "2-4": 0,
+        "4-8": 0,
+        "8-16": 0,
+        "16+": 0,
+      };
+      for (const cube of cubes) {
+        const [sx, sy, sz] = cubeSize(cube);
+        const maxEdge = Math.max(sx, sy, sz);
+        const bucket =
+          maxEdge < 1 ? "0-1"
+          : maxEdge < 2 ? "1-2"
+          : maxEdge < 4 ? "2-4"
+          : maxEdge < 8 ? "4-8"
+          : maxEdge < 16 ? "8-16"
+          : "16+";
+        sizeBuckets[bucket] += 1;
+      }
+
+      // Triangle estimate: cubes = 2 tris per enabled face; meshes = fan-triangulate each face.
+      let triEstimate = 0;
+      for (const cube of cubes) {
+        let enabledFaces = 0;
+        for (const face of Object.values(cube.faces ?? {})) {
+          if ((face as { enabled?: boolean }).enabled !== false) enabledFaces += 1;
+        }
+        triEstimate += enabledFaces * 2;
+      }
+      for (const mesh of meshes) {
+        const faces = (mesh as { faces?: Record<string, { vertices?: unknown[] }> }).faces ?? {};
+        for (const face of Object.values(faces)) {
+          const n = face.vertices?.length ?? 0;
+          if (n >= 3) triEstimate += n - 2;
+        }
+      }
+
+      // Cubes per group (direct children that are cubes).
+      const cubesPerGroup: Record<string, number> = {};
+      for (const g of groups) {
+        const direct = (g.children ?? []).filter((c: unknown) => c instanceof Cube).length;
+        if (direct) cubesPerGroup[g.name] = direct;
+      }
+
+      return JSON.stringify(
+        {
+          scope,
+          totals: {
+            cubes: cubes.length,
+            meshes: meshes.length,
+            groups: groups.length,
+            textures: Texture.all.length,
+            estimated_triangles: triEstimate,
+          },
+          cube_count_by_texture: byTexture,
+          cube_size_histogram: sizeBuckets,
+          cubes_per_group: cubesPerGroup,
+        },
+        null,
+        2
+      );
+    },
+  }, elementToolDocs[14].status);
 }

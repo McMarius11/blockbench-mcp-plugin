@@ -17,7 +17,15 @@ export const placeCubeParameters = z.object({
   group: z
     .string()
     .optional()
-    .describe("Group/bone to which the cube belongs."),
+    .describe(
+      "TOP-LEVEL parameter (not per-element): a single destination group/bone " +
+        "applied to ALL cubes in this call. Accepts a group UUID or name, or " +
+        '"root" for the top level. There is no per-element parent here — to ' +
+        "build a parented hierarchy, either issue one `place_cube` call per " +
+        "target group, or place flat and reparent afterward with " +
+        "`move_to_group` / `group_by_criteria`. An unknown name falls back to " +
+        "root (no error)."
+    ),
   faces: z
     .union([
       z

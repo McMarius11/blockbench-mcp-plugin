@@ -207,6 +207,16 @@ class TestRunner:
             "get_selection",
             "switch_to_tab",
             "get_project_state",
+            "export_model_structure",
+            "get_bounding_box",
+            "get_element_statistics",
+            "highlight_elements",
+            "group_by_criteria",
+            "get_bone_transforms_at_time",
+            "compare_models",
+            "find_uv_overlaps",
+            "uv_island_list",
+            "uv_density_per_face",
         }
         missing = required - names
         if missing:
@@ -941,6 +951,127 @@ class TestRunner:
             also_check=lambda t: json.loads(t).get("texture_assets_root") == expected_root,
         )
 
+    def t_new_feature_tools(self) -> None:
+        """Maintainer-issue tools: export_model_structure, get_bounding_box,
+        get_element_statistics, find_elements texture/prefix/bbox filters,
+        group_by_criteria, compare_models, UV analysis, highlight_elements,
+        get_bone_transforms_at_time, extended capture_screenshot, and the
+        create_animation rotation-fix + camera-zoom-preserve fixes."""
+        print("\n[17/17] maintainer-issue feature tools")
+
+        self.c.call("create_project", {"name": "feat_smoke", "format": "free"})
+        self.c.call("create_texture", {"name": "ftex", "width": 16, "height": 16,
+                                       "fill_color": "#3388ff", "layer_name": "base"})
+        self.c.call("add_group", {"name": "zoneA", "origin": [0, 0, 0], "rotation": [0, 0, 0]})
+        faces = ["north", "south", "east", "west", "up", "down"]
+        self.c.call("place_cube", {"elements": [
+            {"name": "recv_a", "from": [0, 0, 0], "to": [4, 4, 4], "origin": [0, 0, 0]},
+            {"name": "recv_b", "from": [10, 0, 0], "to": [12, 8, 2], "origin": [10, 0, 0]},
+        ], "texture": "ftex", "faces": faces})
+
+        # get_bounding_box (world) — spans both cubes
+        ok, text = self.c.call("get_bounding_box", {"target": "project", "coordinate_space": "world"})
+        self.expect_ok(
+            "get_bounding_box world", ok, text,
+            also_check=lambda t: json.loads(t)["max"] == [12, 8, 4] and json.loads(t)["min"] == [0, 0, 0],
+        )
+
+        # get_element_statistics — 2 cubes → 24 tris
+        ok, text = self.c.call("get_element_statistics", {"scope": "all"})
+        self.expect_ok(
+            "get_element_statistics", ok, text,
+            also_check=lambda t: json.loads(t)["totals"]["cubes"] == 2
+            and json.loads(t)["totals"]["estimated_triangles"] == 24,
+        )
+
+        # find_elements #9: texture_name
+        ok, text = self.c.call("find_elements_by_criteria", {"texture_name": "ftex"})
+        self.expect_ok("find by texture_name", ok, text,
+                       also_check=lambda t: json.loads(t)["count"] == 2)
+        # find_elements #9: name_prefix
+        ok, text = self.c.call("find_elements_by_criteria", {"name_prefix": "recv_"})
+        self.expect_ok("find by name_prefix", ok, text,
+                       also_check=lambda t: json.loads(t)["count"] == 2)
+        # find_elements #9: bbox_overlaps (only recv_a in 0..5 box)
+        ok, text = self.c.call("find_elements_by_criteria",
+                               {"bbox_overlaps": {"min": [-1, -1, -1], "max": [5, 5, 5]}})
+        self.expect_ok(
+            "find by bbox_overlaps", ok, text,
+            also_check=lambda t: json.loads(t)["count"] == 1
+            and json.loads(t)["matches"][0]["name"] == "recv_a",
+        )
+
+        # highlight_elements (non-destructive selection)
+        ok, text = self.c.call("highlight_elements", {"ids": ["recv_a"], "duration_ms": 0})
+        self.expect_ok("highlight_elements", ok, text)
+
+        # UV analysis
+        ok, text = self.c.call("find_uv_overlaps", {"scope": "all"})
+        self.expect_ok("find_uv_overlaps", ok, text,
+                       also_check=lambda t: "total_overlaps" in json.loads(t))
+        ok, text = self.c.call("uv_island_list", {"scope": "all"})
+        self.expect_ok("uv_island_list", ok, text,
+                       also_check=lambda t: "textures" in json.loads(t))
+        ok, text = self.c.call("uv_density_per_face", {"scope": "all"})
+        self.expect_ok("uv_density_per_face", ok, text,
+                       also_check=lambda t: json.loads(t)["count"] == 12)
+
+        # export_model_structure → 2 elements
+        ok, dump = self.c.call("export_model_structure", {"scope": "all"})
+        self.expect_ok("export_model_structure", ok, dump,
+                       also_check=lambda t: len(json.loads(t)["elements"]) == 2)
+
+        # group_by_criteria moves both into a new group
+        ok, text = self.c.call("group_by_criteria",
+                               {"group_name": "receiver", "name_prefix": "recv_"})
+        self.expect_ok(
+            "group_by_criteria", ok, text,
+            also_check=lambda t: json.loads(t)["created"] and json.loads(t)["moved"] == 2,
+        )
+
+        # compare_models: before-dump vs current (after grouping) → 2 reparented
+        ok, text = self.c.call("compare_models", {"before": dump})
+        self.expect_ok(
+            "compare_models detects reparent", ok, text,
+            also_check=lambda t: json.loads(t)["summary"]["elements_reparented"] == 2,
+        )
+
+        # create_animation rotation fix (#2): [0,45,0] stored 1:1
+        self.c.call("bone_rigging", {"action": "create",
+                                     "bone_data": {"name": "Bx", "origin": [0, 8, 0]}})
+        self.c.call("create_animation", {"name": "wv", "loop": True, "animation_length": 1.0,
+                                         "bones": {"Bx": [{"time": 0, "rotation": [0, 0, 0]},
+                                                          {"time": 1, "rotation": [0, 40, 0]}]}})
+        ok, text = self.c.call("get_bone_transforms_at_time", {"animation_id": "wv", "time": 1.0})
+        self.expect_ok(
+            "get_bone_transforms_at_time + rotation 1:1 (#2)", ok, text,
+            also_check=lambda t: abs(json.loads(t)["bones"]["Bx"]["rotation"][1] - 40) < 0.01,
+        )
+
+        # set_camera_angle preserves zoom (#3)
+        self.c.call("risky_eval", {"code": "Preview.selected.camOrtho.zoom = 0.22; 'ok'"})
+        self.c.call("set_camera_angle", {"position": [0, 20, 60], "projection": "orthographic"})
+        ok, text = self.c.call("get_project_info", {})
+        self.expect_ok(
+            "set_camera_angle preserves zoom (#3)", ok, text,
+            also_check=lambda t: abs((json.loads(t).get("camera") or {}).get("zoom", 0) - 0.22) < 0.001,
+        )
+
+        # risky_eval allows comments (#4)
+        ok, text = self.c.call("risky_eval", {"code": "1 + 1 // a comment\n/* block */"})
+        self.expect_ok("risky_eval allows comments (#4)", ok, text,
+                       also_check=lambda t: t.strip() == "2")
+
+        # extended capture_screenshot → file output
+        shot = os.path.join(self.workdir, "feat_shot.png")
+        ok, text = self.c.call("capture_screenshot",
+                               {"width": 96, "height": 96, "background": "#101010",
+                                "return_format": "file", "path": shot})
+        self.expect_ok(
+            "capture_screenshot to file (#8)", ok, text,
+            also_check=lambda _: os.path.exists(shot) and os.path.getsize(shot) > 0,
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -987,6 +1118,7 @@ def main() -> int:
         runner.t_grouping_and_filters()
         runner.t_ignore_textures()
         runner.t_cit_texture_resolution()
+        runner.t_new_feature_tools()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir}")

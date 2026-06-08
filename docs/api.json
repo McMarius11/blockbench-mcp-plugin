@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-05-25T11:31:40.662Z",
+  "generatedAt": "2026-06-08T10:13:47.444Z",
   "tools": [
     {
       "name": "place_cube",
@@ -102,8 +102,8 @@
               },
               "group": {
                 "type": "string",
-                "description": "Group/bone to which the cube belongs.",
-                "markdownDescription": "Group/bone to which the cube belongs."
+                "description": "TOP-LEVEL parameter (not per-element): a single destination group/bone applied to ALL cubes in this call. Accepts a group UUID or name, or \"root\" for the top level. There is no per-element parent here — to build a parented hierarchy, either issue one `place_cube` call per target group, or place flat and reparent afterward with `move_to_group` / `group_by_criteria`. An unknown name falls back to root (no error).",
+                "markdownDescription": "TOP-LEVEL parameter (not per-element): a single destination group/bone applied to ALL cubes in this call. Accepts a group UUID or name, or \"root\" for the top level. There is no per-element parent here — to build a parented hierarchy, either issue one `place_cube` call per target group, or place flat and reparent afterward with `move_to_group` / `group_by_criteria`. An unknown name falls back to root (no error)."
               },
               "faces": {
                 "anyOf": [
@@ -402,7 +402,7 @@
     {
       "name": "capture_screenshot",
       "title": "Capture Screenshot",
-      "description": "Returns the image data of the current view.",
+      "description": "Returns the 3D preview as a PNG image. UI/gizmos are never included (preview canvas only). Options: `width`/`height` for a fixed output resolution (reproducible QA frames; both required together), `background` (\"transparent\" or a hex color) to avoid theme-dependent backdrops, and `return_format` \"file\" to write the PNG to `path` instead of returning it inline. The live viewport is restored after capture.",
       "status": "stable",
       "category": "Camera & Screenshots",
       "annotations": {
@@ -418,6 +418,40 @@
                 "type": "string",
                 "description": "Project name or UUID.",
                 "markdownDescription": "Project name or UUID."
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 8192,
+                "description": "Output width in pixels. Defaults to the live viewport width. Requires `height`.",
+                "markdownDescription": "Output width in pixels. Defaults to the live viewport width. Requires `height`."
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 8192,
+                "description": "Output height in pixels. Defaults to the live viewport height. Requires `width`.",
+                "markdownDescription": "Output height in pixels. Defaults to the live viewport height. Requires `width`."
+              },
+              "background": {
+                "type": "string",
+                "description": "Background for the frame: \"transparent\" (requires an alpha-capable renderer) or a hex color like \"#000000\" / \"#808080\". Defaults to the current viewport background.",
+                "markdownDescription": "Background for the frame: \"transparent\" (requires an alpha-capable renderer) or a hex color like \"#000000\" / \"#808080\". Defaults to the current viewport background."
+              },
+              "return_format": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "file"
+                ],
+                "default": "base64",
+                "description": "\"base64\" returns the image inline (default). \"file\" writes a PNG to `path` and returns a text summary.",
+                "markdownDescription": "\"base64\" returns the image inline (default). \"file\" writes a PNG to `path` and returns a text summary."
+              },
+              "path": {
+                "type": "string",
+                "description": "Absolute output path — required when return_format=\"file\".",
+                "markdownDescription": "Absolute output path — required when return_format=\"file\"."
               }
             },
             "additionalProperties": false
@@ -501,6 +535,12 @@
                 ],
                 "description": "Camera projection type.",
                 "markdownDescription": "Camera projection type."
+              },
+              "zoom": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Camera zoom factor (>1 zooms in, <1 zooms out). When omitted, the current zoom is PRESERVED across the angle change — previously every call silently reset zoom to default (issue #3). Pass an explicit value for reproducible framing (e.g. 0.18 for humanoid full-body).",
+                "markdownDescription": "Camera zoom factor (>1 zooms in, <1 zooms out). When omitted, the current zoom is PRESERVED across the angle change — previously every call silently reset zoom to default (issue #3). Pass an explicit value for reproducible framing (e.g. 0.18 for humanoid full-body)."
               }
             },
             "required": [
@@ -516,7 +556,7 @@
     {
       "name": "create_animation",
       "title": "Create Animation",
-      "description": "Creates a new animation with keyframes for bones.",
+      "description": "Creates a new animation with keyframes for bones. Rotation values are in DEGREES, XYZ Euler order, in the bone's LOCAL space — the same visual values Blockbench shows in the bone rotation fields. They round-trip 1:1: pass the pose you want to see (e.g. [0,45,0] = 45° around Y) and no axis inversion is applied (the Bedrock-format X/Y negation is handled internally; see issue #2). Position is in the same local space, units = Blockbench units. `scale` accepts a single number (uniform) or [x,y,z]. `manage_keyframes` uses the identical convention.",
       "status": "stable",
       "category": "Animation",
       "annotations": {
@@ -1452,6 +1492,50 @@
       }
     },
     {
+      "name": "get_bone_transforms_at_time",
+      "title": "Get Bone Transforms At Time",
+      "description": "Samples interpolated bone transforms (position, rotation in DEGREES, scale) at a given time in seconds — numeric animation QA without screenshot heuristics. Rotation uses the same 1:1 visual-euler convention as create_animation. Returns one entry per animated bone (or only the requested `bones`). Read-only: the timeline cursor is restored afterward. Use for loop-pop checks (compare t=0 vs t=length) or rest-pose verification.",
+      "status": "stable",
+      "category": "Animation",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_bone_transforms_at_time",
+        "definitions": {
+          "get_bone_transforms_at_time": {
+            "type": "object",
+            "properties": {
+              "animation_id": {
+                "type": "string",
+                "description": "Animation UUID or name. If not provided, uses current animation.",
+                "markdownDescription": "Animation UUID or name. If not provided, uses current animation."
+              },
+              "time": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Time in seconds at which to sample the bone transforms.",
+                "markdownDescription": "Time in seconds at which to sample the bone transforms."
+              },
+              "bones": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Bone/group names to sample. Omit to return every animated bone in the animation.",
+                "markdownDescription": "Bone/group names to sample. Omit to return every animated bone in the animation."
+              }
+            },
+            "required": [
+              "time"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
       "name": "list_armatures",
       "title": "List Armatures",
       "description": "Lists all armatures in the current project with their basic info.",
@@ -2377,7 +2461,7 @@
     {
       "name": "find_elements_by_criteria",
       "title": "Find Elements by Criteria",
-      "description": "Searches the current project for elements matching the given criteria. Supports name pattern matching (regex or substring), type filtering, scoping to a parent group, cube size ranges, and selection scope. Returns element metadata, never modifies state.",
+      "description": "Searches the current project for elements matching the given criteria. Supports name matching (regex, substring, prefix, suffix), type filtering, scoping to a parent group, cube size ranges, selection scope, center-in-region (region_min/max), cube-box intersection (bbox_overlaps), per-face enabled, and texture (texture_name/texture_uuid). All supplied filters are AND-combined. Returns element metadata, never modifies state.",
       "status": "stable",
       "category": "Elements",
       "annotations": {
@@ -2474,6 +2558,58 @@
                 ],
                 "description": "Keep only cubes whose given face (north/south/east/west/up/down) is enabled. Non-cube elements are excluded when set.",
                 "markdownDescription": "Keep only cubes whose given face (north/south/east/west/up/down) is enabled. Non-cube elements are excluded when set."
+              },
+              "name_prefix": {
+                "type": "string",
+                "description": "Keep only elements whose name starts with this string. Case-sensitive.",
+                "markdownDescription": "Keep only elements whose name starts with this string. Case-sensitive."
+              },
+              "name_suffix": {
+                "type": "string",
+                "description": "Keep only elements whose name ends with this string. Case-sensitive.",
+                "markdownDescription": "Keep only elements whose name ends with this string. Case-sensitive."
+              },
+              "texture_name": {
+                "type": "string",
+                "description": "Keep only cubes/meshes with at least one face using the texture of this name. Case-insensitive. Non-textured elements are excluded when set.",
+                "markdownDescription": "Keep only cubes/meshes with at least one face using the texture of this name. Case-insensitive. Non-textured elements are excluded when set."
+              },
+              "texture_uuid": {
+                "type": "string",
+                "description": "Keep only cubes/meshes with at least one face using the texture with this UUID (or short numeric id). More precise than `texture_name`.",
+                "markdownDescription": "Keep only cubes/meshes with at least one face using the texture with this UUID (or short numeric id). More precise than `texture_name`."
+              },
+              "bbox_overlaps": {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "Lower corner [x,y,z] of the query box.",
+                    "markdownDescription": "Lower corner [x,y,z] of the query box."
+                  },
+                  "max": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "Upper corner [x,y,z] of the query box.",
+                    "markdownDescription": "Upper corner [x,y,z] of the query box."
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ],
+                "additionalProperties": false,
+                "description": "Keep only cubes whose axis-aligned from/to box INTERSECTS this region (unlike `region_min`/`region_max`, which test only the center point). Meshes and groups are excluded when set.",
+                "markdownDescription": "Keep only cubes whose axis-aligned from/to box INTERSECTS this region (unlike `region_min`/`region_max`, which test only the center point). Meshes and groups are excluded when set."
               },
               "limit": {
                 "type": "integer",
@@ -2673,6 +2809,305 @@
               "ids",
               "target_group"
             ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "export_model_structure",
+      "title": "Export Model Structure",
+      "description": "Bulk one-shot JSON dump of the model: project metadata, the full group hierarchy, every element (cube/mesh) with geometry (and per-face data by default), textures, and optionally an animation summary. Scope to the whole project, the current selection, or a group's subtree. Use this for offline analysis, archetype extraction, or as the `before`/`after` input to `compare_models` — it replaces dozens of `get_element_info` roundtrips with a single call. Respects `max_elements` and flags `truncated` when capped.",
+      "status": "stable",
+      "category": "Elements",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/export_model_structure",
+        "definitions": {
+          "export_model_structure": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selection",
+                  "group"
+                ],
+                "default": "all",
+                "description": "What to export: whole project, current selection, or a named group's subtree.",
+                "markdownDescription": "What to export: whole project, current selection, or a named group's subtree."
+              },
+              "group": {
+                "type": "string",
+                "description": "Group UUID or name — required when scope=group.",
+                "markdownDescription": "Group UUID or name — required when scope=group."
+              },
+              "include_animations": {
+                "type": "boolean",
+                "default": false,
+                "description": "Include an animation summary (name, length, loop, animated bone count).",
+                "markdownDescription": "Include an animation summary (name, length, loop, animated bone count)."
+              },
+              "include_faces": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include per-face data on cubes (uv/texture/rotation/tint/enabled).",
+                "markdownDescription": "Include per-face data on cubes (uv/texture/rotation/tint/enabled)."
+              },
+              "max_elements": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "default": 2000,
+                "description": "Cap on exported elements. When exceeded, `truncated` is set true.",
+                "markdownDescription": "Cap on exported elements. When exceeded, `truncated` is set true."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_bounding_box",
+      "title": "Get Bounding Box",
+      "description": "Returns the aggregated axis-aligned bounding box ({min,max,center,extents}) of the selection, a named group, the whole project, or only visible elements. `world` space accounts for rotations and parent transforms (use for auto-framing screenshots); `local` space is the raw from/to + vertex extent ignoring rotation. Replaces ad-hoc `risky_eval` bbox queries.",
+      "status": "stable",
+      "category": "Elements",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_bounding_box",
+        "definitions": {
+          "get_bounding_box": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "enum": [
+                  "selection",
+                  "group",
+                  "project",
+                  "visible"
+                ],
+                "description": "What to measure: current selection, a named group's subtree, the whole project, or only currently-visible elements.",
+                "markdownDescription": "What to measure: current selection, a named group's subtree, the whole project, or only currently-visible elements."
+              },
+              "group_id": {
+                "type": "string",
+                "description": "Group UUID or name — required when target=group.",
+                "markdownDescription": "Group UUID or name — required when target=group."
+              },
+              "coordinate_space": {
+                "type": "string",
+                "enum": [
+                  "world",
+                  "local"
+                ],
+                "default": "world",
+                "description": "`world` = transformed scene-space AABB (accounts for rotation/parent transforms; best for camera framing). `local` = axis-aligned over raw cube from/to and mesh vertices, ignoring element rotation.",
+                "markdownDescription": "`world` = transformed scene-space AABB (accounts for rotation/parent transforms; best for camera framing). `local` = axis-aligned over raw cube from/to and mesh vertices, ignoring element rotation."
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "highlight_elements",
+      "title": "Highlight Elements",
+      "description": "Temporarily highlights elements in the viewport by selecting them (non-destructive — geometry is never modified). With `duration_ms > 0` the prior selection is restored afterward for a brief flash; otherwise the highlight selection persists. Useful for visually confirming `find_elements_by_criteria` results.",
+      "status": "stable",
+      "category": "Elements",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/highlight_elements",
+        "definitions": {
+          "highlight_elements": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "description": "Element IDs or names to highlight by selecting them in the viewport.",
+                "markdownDescription": "Element IDs or names to highlight by selecting them in the viewport."
+              },
+              "duration_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000,
+                "default": 0,
+                "description": "If > 0, the previous selection is restored after this many milliseconds (a temporary flash). 0 leaves the highlight selection in place.",
+                "markdownDescription": "If > 0, the previous selection is restored after this many milliseconds (a temporary flash). 0 leaves the highlight selection in place."
+              },
+              "clear_previous": {
+                "type": "boolean",
+                "default": true,
+                "description": "Replace the current selection (true) or add the highlighted elements to it (false).",
+                "markdownDescription": "Replace the current selection (true) or add the highlighted elements to it (false)."
+              }
+            },
+            "required": [
+              "ids"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "group_by_criteria",
+      "title": "Group Elements by Criteria",
+      "description": "Finds elements matching the given criteria (name/type/region/texture filters) and moves them into a NEW group in one step — the write-side companion to `find_elements_by_criteria`. Speeds up organizing flat imports into logical zones (e.g. receiver/barrel/stock). Creates the group under `parent_group` (default root). Groups themselves are never moved. Returns the new group's UUID and the moved element list.",
+      "status": "stable",
+      "category": "Elements",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/group_by_criteria",
+        "definitions": {
+          "group_by_criteria": {
+            "type": "object",
+            "properties": {
+              "group_name": {
+                "type": "string",
+                "description": "Name for the new group to create.",
+                "markdownDescription": "Name for the new group to create."
+              },
+              "parent_group": {
+                "type": "string",
+                "description": "Parent group UUID or name, or \"root\" for the top level (default).",
+                "markdownDescription": "Parent group UUID or name, or \"root\" for the top level (default)."
+              },
+              "name_pattern": {
+                "type": "string",
+                "description": "Regex on element names (case-sensitive).",
+                "markdownDescription": "Regex on element names (case-sensitive)."
+              },
+              "name_contains": {
+                "type": "string",
+                "description": "Case-insensitive substring of element names.",
+                "markdownDescription": "Case-insensitive substring of element names."
+              },
+              "name_prefix": {
+                "type": "string",
+                "description": "Element name starts-with filter.",
+                "markdownDescription": "Element name starts-with filter."
+              },
+              "name_suffix": {
+                "type": "string",
+                "description": "Element name ends-with filter.",
+                "markdownDescription": "Element name ends-with filter."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "cube",
+                  "mesh",
+                  "any"
+                ],
+                "default": "any",
+                "description": "Restrict to a single element type (groups are never moved).",
+                "markdownDescription": "Restrict to a single element type (groups are never moved)."
+              },
+              "source_group": {
+                "type": "string",
+                "description": "Only consider descendants of this group as candidates.",
+                "markdownDescription": "Only consider descendants of this group as candidates."
+              },
+              "region_min": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Region lower bound (cube center / mesh origin).",
+                "markdownDescription": "Region lower bound (cube center / mesh origin)."
+              },
+              "region_max": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Region upper bound (cube center / mesh origin).",
+                "markdownDescription": "Region upper bound (cube center / mesh origin)."
+              },
+              "texture_name": {
+                "type": "string",
+                "description": "Only elements with a face using this texture name.",
+                "markdownDescription": "Only elements with a face using this texture name."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2000,
+                "default": 500,
+                "description": "Maximum number of elements to move into the new group.",
+                "markdownDescription": "Maximum number of elements to move into the new group."
+              }
+            },
+            "required": [
+              "group_name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_element_statistics",
+      "title": "Get Element Statistics",
+      "description": "Aggregated statistics over the model or a subset: total counts, cube count per texture, a cube-size histogram, an estimated triangle count (cubes = 12 tris each minus disabled faces; meshes from face fan-triangulation), and cubes-per-group. Read-only. Use when comparing reference models or budgeting poly counts.",
+      "status": "stable",
+      "category": "Elements",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_element_statistics",
+        "definitions": {
+          "get_element_statistics": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selection",
+                  "group"
+                ],
+                "default": "all",
+                "description": "Aggregate over the whole project, current selection, or a named group's subtree.",
+                "markdownDescription": "Aggregate over the whole project, current selection, or a named group's subtree."
+              },
+              "group": {
+                "type": "string",
+                "description": "Group UUID or name — required when scope=group.",
+                "markdownDescription": "Group UUID or name — required when scope=group."
+              }
+            },
             "additionalProperties": false
           }
         },
@@ -5842,8 +6277,8 @@
             "properties": {
               "code": {
                 "type": "string",
-                "description": "JavaScript code to evaluate. Do not pass `console` commands or comments.",
-                "markdownDescription": "JavaScript code to evaluate. Do not pass `console` commands or comments."
+                "description": "JavaScript code to evaluate; the value of the last expression is returned. Comments (`//` and `/* */`) ARE allowed (issue #4) — only `console.*` calls are rejected, since their output is not captured. Return a value instead of logging.",
+                "markdownDescription": "JavaScript code to evaluate; the value of the last expression is returned. Comments (`//` and `/* */`) ARE allowed (issue #4) — only `console.*` calls are rejected, since their output is not captured. Return a value instead of logging."
               }
             },
             "required": [
@@ -7755,6 +8190,170 @@
           "get_selection": {
             "type": "object",
             "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "compare_models",
+      "title": "Compare Models",
+      "description": "Diffs two model structures (added / removed / renamed / reparented elements and groups, plus per-face UV changes). Pass two `export_model_structure` dumps, or just `before` to diff against the currently open project. Enables regression tracking between build iterations.",
+      "status": "stable",
+      "category": "Analysis & UV QA (fork)",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/compare_models",
+        "definitions": {
+          "compare_models": {
+            "type": "object",
+            "properties": {
+              "before": {
+                "type": "string",
+                "description": "Baseline model as JSON — an `export_model_structure` dump (string). Diffed against `after`.",
+                "markdownDescription": "Baseline model as JSON — an `export_model_structure` dump (string). Diffed against `after`."
+              },
+              "after": {
+                "type": "string",
+                "description": "Comparison model as JSON (an `export_model_structure` dump). Omit to diff `before` against the currently open project.",
+                "markdownDescription": "Comparison model as JSON (an `export_model_structure` dump). Omit to diff `before` against the currently open project."
+              }
+            },
+            "required": [
+              "before"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "find_uv_overlaps",
+      "title": "Find UV Overlaps",
+      "description": "Finds faces whose UV rectangles overlap on the SAME texture (the classic cause of texture bleed / wrong-face painting). Overlaps across different textures are ignored. Returns overlapping face pairs with overlap area, grouped by texture. Read-only.",
+      "status": "stable",
+      "category": "Analysis & UV QA (fork)",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/find_uv_overlaps",
+        "definitions": {
+          "find_uv_overlaps": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selection",
+                  "group"
+                ],
+                "default": "all",
+                "description": "Restrict to the whole project, current selection, or a named group's subtree.",
+                "markdownDescription": "Restrict to the whole project, current selection, or a named group's subtree."
+              },
+              "group": {
+                "type": "string",
+                "description": "Group UUID or name — required when scope=group.",
+                "markdownDescription": "Group UUID or name — required when scope=group."
+              },
+              "min_area": {
+                "type": "number",
+                "minimum": 0,
+                "default": 1,
+                "description": "Minimum overlap area (in UV pixels²) to report. Filters out negligible touches.",
+                "markdownDescription": "Minimum overlap area (in UV pixels²) to report. Filters out negligible touches."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "uv_island_list",
+      "title": "List UV Islands",
+      "description": "Lists UV islands (connected components of overlapping/touching face rects) per texture, largest first, with member faces and bounds. Useful for auditing atlas layout. Read-only.",
+      "status": "stable",
+      "category": "Analysis & UV QA (fork)",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/uv_island_list",
+        "definitions": {
+          "uv_island_list": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selection",
+                  "group"
+                ],
+                "default": "all",
+                "description": "Restrict to the whole project, current selection, or a named group's subtree.",
+                "markdownDescription": "Restrict to the whole project, current selection, or a named group's subtree."
+              },
+              "group": {
+                "type": "string",
+                "description": "Group UUID or name — required when scope=group.",
+                "markdownDescription": "Group UUID or name — required when scope=group."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "uv_density_per_face",
+      "title": "UV Density Per Face",
+      "description": "Per-face UV density: pixel area, fraction of the atlas, and (for cubes) texels-per-world-unit² — to spot under/over-resolved faces in a 256×256-style atlas workflow. Read-only.",
+      "status": "stable",
+      "category": "Analysis & UV QA (fork)",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/uv_density_per_face",
+        "definitions": {
+          "uv_density_per_face": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selection",
+                  "group"
+                ],
+                "default": "all",
+                "description": "Restrict to the whole project, current selection, or a named group's subtree.",
+                "markdownDescription": "Restrict to the whole project, current selection, or a named group's subtree."
+              },
+              "group": {
+                "type": "string",
+                "description": "Group UUID or name — required when scope=group.",
+                "markdownDescription": "Group UUID or name — required when scope=group."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000,
+                "default": 1000,
+                "description": "Maximum number of faces to report.",
+                "markdownDescription": "Maximum number of faces to report."
+              }
+            },
             "additionalProperties": false
           }
         },
