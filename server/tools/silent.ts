@@ -62,6 +62,19 @@ export const exportGltfPathParameters = z.object({
     .optional()
     .default(true)
     .describe("Include animations in the export."),
+  require_edit_tab: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      "Guard against Blockbench bug #2224: exporting glTF from the Animate " +
+        "tab bakes the current timeline scrub frame into the armature rest " +
+        "pose, silently corrupting the runtime rig. When true (default) and " +
+        "the active tab is not 'edit', the export auto-switches to the edit " +
+        "tab first and reports `switched_from` in the response. Set false to " +
+        "export from whatever tab is active (only do this if you know the " +
+        "timeline is at the rest frame)."
+    ),
 });
 
 export const setProjectResolutionParameters = z.object({
@@ -122,7 +135,19 @@ export const switchToTabParameters = z.object({
     .describe(
       "Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats)."
     ),
+  force: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Re-select the tab even if it is already active. By default the switch " +
+        "is idempotent: if the requested tab is already active the call is a " +
+        "no-op and returns `changed: false`, so callers can skip redundant UI " +
+        "churn without tracking tab state themselves."
+    ),
 });
+
+export const getCurrentTabParameters = z.object({});
 
 // ---------------------------------------------------------------------------
 // Tool docs
@@ -192,7 +217,7 @@ export const silentToolDocs: ToolSpec[] = [
   {
     name: "switch_to_tab",
     description:
-      "Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose.",
+      "Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose. Idempotent by default: a no-op returning `changed: false` when the tab is already active (pass `force: true` to re-select regardless). Pair with `get_current_tab` to avoid redundant switches in multi-phase builds.",
     annotations: {
       title: "Switch Mode Tab",
       destructiveHint: false,
@@ -247,6 +272,18 @@ export const silentToolDocs: ToolSpec[] = [
       openWorldHint: false,
     },
     parameters: installPluginFromPathParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "get_current_tab",
+    description:
+      "Return the currently active Blockbench mode tab (edit / paint / animate / display / pose) as `{ tab }`. Lets automated multi-phase builds read tab state and skip redundant `switch_to_tab` calls (which reload UI state). Lighter than `get_project_state` when you only need the tab.",
+    annotations: {
+      title: "Get Current Tab",
+      destructiveHint: false,
+      openWorldHint: false,
+    },
+    parameters: getCurrentTabParameters,
     status: STATUS_STABLE,
   },
 ];
@@ -322,13 +359,32 @@ export function registerSilentTools() {
         path,
         embed_textures,
         animations,
+        require_edit_tab,
       }: {
         path: string;
         embed_textures: boolean;
         animations: boolean;
+        require_edit_tab: boolean;
       }) {
         ensureProject();
         const fs = getFs();
+
+        // Guard against Blockbench bug #2224: exporting glTF while the Animate
+        // (or any non-edit) tab is active bakes the current timeline scrub
+        // frame into the armature rest pose, silently corrupting the runtime
+        // rig. Auto-correct by switching to the edit tab before compiling.
+        let switchedFrom: string | null = null;
+        const currentTab: string | null =
+          // @ts-ignore - Modes is a Blockbench global; selected is a Mode
+          typeof Modes !== "undefined" && Modes.selected ? (Modes.selected as any).id : null;
+        if (require_edit_tab && currentTab && currentTab !== "edit") {
+          // @ts-ignore
+          if (Modes.options && Modes.options.edit) {
+            // @ts-ignore
+            Modes.options.edit.select();
+            switchedFrom = currentTab;
+          }
+        }
 
         // Find the gltf codec — Blockbench registers it under different IDs across versions
         // @ts-ignore - Codecs is a Blockbench global
@@ -377,9 +433,12 @@ export function registerSilentTools() {
           fs.writeFileSync(path, content, "utf-8");
         }
 
-        return `Exported glTF silently to ${path} (${
+        const sizeNote = `${
           Buffer.isBuffer(content) ? content.length : content.length
-        } bytes).`;
+        } bytes`;
+        return switchedFrom
+          ? `Exported glTF silently to ${path} (${sizeNote}). Auto-switched from '${switchedFrom}' to 'edit' tab first to avoid Blockbench #2224 rest-pose baking.`
+          : `Exported glTF silently to ${path} (${sizeNote}).`;
       },
     },
     silentToolDocs[1].status
@@ -467,14 +526,25 @@ export function registerSilentTools() {
     silentToolDocs[5].name,
     {
       ...silentToolDocs[5],
-      async execute({ tab }: { tab: "edit" | "paint" | "animate" | "display" }) {
+      async execute({
+        tab,
+        force,
+      }: {
+        tab: "edit" | "paint" | "animate" | "display" | "pose";
+        force: boolean;
+      }) {
         // @ts-ignore - Modes is a Blockbench global
         if (typeof Modes === "undefined" || !Modes.options || !Modes.options[tab]) {
           throw new Error(`Mode '${tab}' not available.`);
         }
+        // @ts-ignore - Modes.selected is the active Mode
+        const current: string | null = Modes.selected ? (Modes.selected as any).id : null;
+        if (current === tab && !force) {
+          return JSON.stringify({ tab, changed: false });
+        }
         // @ts-ignore
         Modes.options[tab].select();
-        return `Switched to ${tab} tab.`;
+        return JSON.stringify({ tab, changed: true, previous: current });
       },
     },
     silentToolDocs[5].status
@@ -854,5 +924,20 @@ export function registerSilentTools() {
       },
     },
     silentToolDocs[9].status
+  );
+
+  // ---- get_current_tab ----
+  createTool(
+    silentToolDocs[10].name,
+    {
+      ...silentToolDocs[10],
+      async execute() {
+        const tab =
+          // @ts-ignore - Modes is a Blockbench global; selected is a Mode
+          typeof Modes !== "undefined" && Modes.selected ? (Modes.selected as any).id : null;
+        return JSON.stringify({ tab });
+      },
+    },
+    silentToolDocs[10].status
   );
 }

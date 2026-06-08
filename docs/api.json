@@ -1,11 +1,11 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-06-08T10:44:57.756Z",
+  "generatedAt": "2026-06-08T18:51:47.348Z",
   "tools": [
     {
       "name": "place_cube",
       "title": "Place Cube",
-      "description": "Places a cube of the given size at the specified position. Texture and group are optional.",
+      "description": "Places one or more cubes at the given positions. Texture is optional. Parenting: set a per-element `parent` (group/bone) inside each `elements[]` entry to parent cubes to different bones in a single call, or use the top-level `group` as a shared default. Parented cubes keep their authored world position and rotate correctly around the parent bone's origin (no coordinate rebasing needed).",
       "status": "stable",
       "category": "Cubes",
       "annotations": {
@@ -84,6 +84,11 @@
                         0,
                         0
                       ]
+                    },
+                    "parent": {
+                      "type": "string",
+                      "description": "Per-element destination group/bone for THIS cube: a group UUID or name, or \"root\" for the top level. Overrides `place_cube`'s top-level `group` for this element, so a single call can parent different cubes to different bones (e.g. a humanoid body where each box belongs to a different limb). An unknown name falls back to the top-level `group` (or root). The cube keeps its authored world from/to and rotates correctly around the parent bone's origin.",
+                      "markdownDescription": "Per-element destination group/bone for THIS cube: a group UUID or name, or \"root\" for the top level. Overrides `place_cube`'s top-level `group` for this element, so a single call can parent different cubes to different bones (e.g. a humanoid body where each box belongs to a different limb). An unknown name falls back to the top-level `group` (or root). The cube keeps its authored world from/to and rotates correctly around the parent bone's origin."
                     }
                   },
                   "required": [
@@ -102,8 +107,8 @@
               },
               "group": {
                 "type": "string",
-                "description": "TOP-LEVEL parameter (not per-element): a single destination group/bone applied to ALL cubes in this call. Accepts a group UUID or name, or \"root\" for the top level. There is no per-element parent here — to build a parented hierarchy, either issue one `place_cube` call per target group, or place flat and reparent afterward with `move_to_group` / `group_by_criteria`. An unknown name falls back to root (no error).",
-                "markdownDescription": "TOP-LEVEL parameter (not per-element): a single destination group/bone applied to ALL cubes in this call. Accepts a group UUID or name, or \"root\" for the top level. There is no per-element parent here — to build a parented hierarchy, either issue one `place_cube` call per target group, or place flat and reparent afterward with `move_to_group` / `group_by_criteria`. An unknown name falls back to root (no error)."
+                "description": "TOP-LEVEL batch default: a single destination group/bone applied to all cubes that do NOT carry their own `parent`. Accepts a group UUID or name, or \"root\" for the top level. For a parented hierarchy in one call, set `parent` per element in `elements[]` (it overrides this); this top-level value then acts as the fallback for elements without a `parent`. An unknown name falls back to root (no error).",
+                "markdownDescription": "TOP-LEVEL batch default: a single destination group/bone applied to all cubes that do NOT carry their own `parent`. Accepts a group UUID or name, or \"root\" for the top level. For a parented hierarchy in one call, set `parent` per element in `elements[]` (it overrides this); this top-level value then acts as the fallback for elements without a `parent`. An unknown name falls back to root (no error)."
               },
               "faces": {
                 "anyOf": [
@@ -592,7 +597,9 @@
                     "type": "object",
                     "properties": {
                       "time": {
-                        "type": "number"
+                        "type": "number",
+                        "description": "Keyframe time in SECONDS.",
+                        "markdownDescription": "Keyframe time in SECONDS."
                       },
                       "position": {
                         "type": "array",
@@ -601,8 +608,8 @@
                         },
                         "minItems": 3,
                         "maxItems": 3,
-                        "description": "3D vector [x, y, z].",
-                        "markdownDescription": "3D vector [x, y, z]."
+                        "description": "Bone-local translation [x,y,z] in Blockbench units.",
+                        "markdownDescription": "Bone-local translation [x,y,z] in Blockbench units."
                       },
                       "rotation": {
                         "type": "array",
@@ -611,8 +618,8 @@
                         },
                         "minItems": 3,
                         "maxItems": 3,
-                        "description": "3D vector [x, y, z].",
-                        "markdownDescription": "3D vector [x, y, z]."
+                        "description": "Bone-local rotation [x,y,z] in DEGREES (XYZ Euler), the same visual values shown in Blockbench. Stored 1:1 — no axis inversion (see issue #2). Read back with read_animation_keyframes.",
+                        "markdownDescription": "Bone-local rotation [x,y,z] in DEGREES (XYZ Euler), the same visual values shown in Blockbench. Stored 1:1 — no axis inversion (see issue #2). Read back with read_animation_keyframes."
                       },
                       "scale": {
                         "anyOf": [
@@ -629,7 +636,9 @@
                           {
                             "type": "number"
                           }
-                        ]
+                        ],
+                        "description": "Uniform scale (number) or per-axis [x,y,z].",
+                        "markdownDescription": "Uniform scale (number) or per-axis [x,y,z]."
                       }
                     },
                     "required": [
@@ -638,8 +647,8 @@
                     "additionalProperties": false
                   }
                 },
-                "description": "Keyframes for each bone",
-                "markdownDescription": "Keyframes for each bone"
+                "description": "Keyframes per bone, keyed by bone/group name. Each value is an array of { time, position?, rotation?, scale? } samples. Times in seconds.",
+                "markdownDescription": "Keyframes per bone, keyed by bone/group name. Each value is an array of { time, position?, rotation?, scale? } samples. Times in seconds."
               },
               "particle_effects": {
                 "type": "object",
@@ -1529,6 +1538,69 @@
             "required": [
               "time"
             ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "read_animation_keyframes",
+      "title": "Read Animation Keyframes",
+      "description": "Read back the RAW stored keyframes (rotation in DEGREES, position, scale) per bone — the authored values, not interpolated samples (use get_bone_transforms_at_time for interpolated). Values round-trip 1:1 with what create_animation / manage_keyframes wrote (after the issue #2 X/Y fix), so this is the tool for automated rotation-regression checks without screenshots. Filter by `bones`, `channels`, exact `time`, or `time_range`. Read-only.",
+      "status": "stable",
+      "category": "Animation",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/read_animation_keyframes",
+        "definitions": {
+          "read_animation_keyframes": {
+            "type": "object",
+            "properties": {
+              "animation_id": {
+                "type": "string",
+                "description": "Animation UUID or name. If not provided, uses current animation.",
+                "markdownDescription": "Animation UUID or name. If not provided, uses current animation."
+              },
+              "bones": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Bone/group names to read. Omit to return every animated bone in the animation.",
+                "markdownDescription": "Bone/group names to read. Omit to return every animated bone in the animation."
+              },
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "rotation",
+                    "position",
+                    "scale"
+                  ]
+                },
+                "description": "Channels to include. Omit for all three (rotation, position, scale).",
+                "markdownDescription": "Channels to include. Omit for all three (rotation, position, scale)."
+              },
+              "time": {
+                "type": "number",
+                "description": "If set, return only keyframes whose time exactly matches (±0.001s).",
+                "markdownDescription": "If set, return only keyframes whose time exactly matches (±0.001s)."
+              },
+              "time_range": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "If set as [t0, t1], return only keyframes with t0 ≤ time ≤ t1.",
+                "markdownDescription": "If set as [t0, t1], return only keyframes with t0 ≤ time ≤ t1."
+              }
+            },
             "additionalProperties": false
           }
         },
@@ -7128,6 +7200,12 @@
                 "default": true,
                 "description": "Include animations in the export.",
                 "markdownDescription": "Include animations in the export."
+              },
+              "require_edit_tab": {
+                "type": "boolean",
+                "default": true,
+                "description": "Guard against Blockbench bug #2224: exporting glTF from the Animate tab bakes the current timeline scrub frame into the armature rest pose, silently corrupting the runtime rig. When true (default) and the active tab is not 'edit', the export auto-switches to the edit tab first and reports `switched_from` in the response. Set false to export from whatever tab is active (only do this if you know the timeline is at the rest frame).",
+                "markdownDescription": "Guard against Blockbench bug #2224: exporting glTF from the Animate tab bakes the current timeline scrub frame into the armature rest pose, silently corrupting the runtime rig. When true (default) and the active tab is not 'edit', the export auto-switches to the edit tab first and reports `switched_from` in the response. Set false to export from whatever tab is active (only do this if you know the timeline is at the rest frame)."
               }
             },
             "required": [
@@ -7236,7 +7314,7 @@
     {
       "name": "switch_to_tab",
       "title": "Switch Mode Tab",
-      "description": "Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose.",
+      "description": "Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose. Idempotent by default: a no-op returning `changed: false` when the tab is already active (pass `force: true` to re-select regardless). Pair with `get_current_tab` to avoid redundant switches in multi-phase builds.",
       "status": "stable",
       "category": "Silent IO (fork)",
       "annotations": {
@@ -7260,6 +7338,12 @@
                 ],
                 "description": "Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats).",
                 "markdownDescription": "Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats)."
+              },
+              "force": {
+                "type": "boolean",
+                "default": false,
+                "description": "Re-select the tab even if it is already active. By default the switch is idempotent: if the requested tab is already active the call is a no-op and returns `changed: false`, so callers can skip redundant UI churn without tracking tab state themselves.",
+                "markdownDescription": "Re-select the tab even if it is already active. By default the switch is idempotent: if the requested tab is already active the call is a no-op and returns `changed: false`, so callers can skip redundant UI churn without tracking tab state themselves."
               }
             },
             "required": [
@@ -7391,6 +7475,28 @@
             "required": [
               "path"
             ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_current_tab",
+      "title": "Get Current Tab",
+      "description": "Return the currently active Blockbench mode tab (edit / paint / animate / display / pose) as `{ tab }`. Lets automated multi-phase builds read tab state and skip redundant `switch_to_tab` calls (which reload UI state). Lighter than `get_project_state` when you only need the tab.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_current_tab",
+        "definitions": {
+          "get_current_tab": {
+            "type": "object",
+            "properties": {},
             "additionalProperties": false
           }
         },
@@ -8358,6 +8464,123 @@
                 "default": 1000,
                 "description": "Maximum number of faces to report.",
                 "markdownDescription": "Maximum number of faces to report."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "validate_rig",
+      "title": "Validate Rig",
+      "description": "Composite rig validation against the LIVE project (no .bbmodel parse): `bone_orphans` (animated bones with zero child elements — runs automatically), `limb_pivot` (nearest cube corner within `limb_anchor_max` of the bone origin), `hand_center` (cube center within `hand_bone_center_max` of the bone origin), and `limb_x_seam` (adjacent cubes in a proximal→distal chain share a Y cross-section at the X seam). Supply `pairs` (bone↔cube) and `chains` (ordered cubes) to drive the geometric checks. Returns `{ passed, issues[] }` with per-issue delta vs threshold. EXPERIMENTAL: thresholds mirror validate_asset.py humanoid rules — tune for your rig. See issue #20.",
+      "status": "experimental",
+      "category": "Analysis & UV QA (fork)",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/validate_rig",
+        "definitions": {
+          "validate_rig": {
+            "type": "object",
+            "properties": {
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "limb_pivot",
+                    "hand_center",
+                    "limb_x_seam",
+                    "bone_orphans"
+                  ]
+                },
+                "description": "Which checks to run. Omit to run all applicable. `bone_orphans` runs automatically over animated bones; `limb_pivot`/`hand_center` need `pairs`; `limb_x_seam` needs `chains`.",
+                "markdownDescription": "Which checks to run. Omit to run all applicable. `bone_orphans` runs automatically over animated bones; `limb_pivot`/`hand_center` need `pairs`; `limb_x_seam` needs `chains`."
+              },
+              "pairs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bone": {
+                      "type": "string",
+                      "description": "Bone/group name or uuid.",
+                      "markdownDescription": "Bone/group name or uuid."
+                    },
+                    "cube": {
+                      "type": "string",
+                      "description": "Cube name or uuid bound to this bone.",
+                      "markdownDescription": "Cube name or uuid bound to this bone."
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "limb",
+                        "hand"
+                      ],
+                      "default": "limb",
+                      "description": "`limb`: nearest cube corner must be within `limb_anchor_max` of the bone origin. `hand`: cube CENTER must be within `hand_bone_center_max` of the bone origin.",
+                      "markdownDescription": "`limb`: nearest cube corner must be within `limb_anchor_max` of the bone origin. `hand`: cube CENTER must be within `hand_bone_center_max` of the bone origin."
+                    }
+                  },
+                  "required": [
+                    "bone",
+                    "cube"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Bone↔cube bindings to check (e.g. ARM_BONE_CUBE_PAIRS). Drives limb_pivot and hand_center.",
+                "markdownDescription": "Bone↔cube bindings to check (e.g. ARM_BONE_CUBE_PAIRS). Drives limb_pivot and hand_center."
+              },
+              "chains": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Label for the chain (e.g. 'R_arm').",
+                      "markdownDescription": "Label for the chain (e.g. 'R_arm')."
+                    },
+                    "cubes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 2,
+                      "description": "Ordered cube names/uuids proximal→distal (e.g. [arm, forearm, hand]). Adjacent cubes are checked for a shared Y cross-section at the X seam.",
+                      "markdownDescription": "Ordered cube names/uuids proximal→distal (e.g. [arm, forearm, hand]). Adjacent cubes are checked for a shared Y cross-section at the X seam."
+                    }
+                  },
+                  "required": [
+                    "cubes"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Ordered limb cube chains for the limb_x_seam check.",
+                "markdownDescription": "Ordered limb cube chains for the limb_x_seam check."
+              },
+              "limb_anchor_max": {
+                "type": "number",
+                "default": 0.5,
+                "description": "Max distance (BB units) from nearest cube corner to bone origin for limb_pivot.",
+                "markdownDescription": "Max distance (BB units) from nearest cube corner to bone origin for limb_pivot."
+              },
+              "hand_bone_center_max": {
+                "type": "number",
+                "default": 1.25,
+                "description": "Max distance (BB units) from cube center to bone origin for hand_center.",
+                "markdownDescription": "Max distance (BB units) from cube center to bone origin for hand_center."
+              },
+              "seam_tolerance": {
+                "type": "number",
+                "default": 0.01,
+                "description": "Max allowed mismatch (BB units) in shared Y min/max between adjacent chain cubes.",
+                "markdownDescription": "Max allowed mismatch (BB units) in shared Y min/max between adjacent chain cubes."
               }
             },
             "additionalProperties": false

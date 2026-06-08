@@ -31,14 +31,28 @@ export const createAnimationParameters = z.object({
     .record(
       z.array(
         z.object({
-          time: z.number(),
-          position: vector3Schema.optional(),
-          rotation: vector3Schema.optional(),
-          scale: z.union([vector3Schema, z.number()]).optional(),
+          time: z.number().describe("Keyframe time in SECONDS."),
+          position: vector3Schema
+            .optional()
+            .describe("Bone-local translation [x,y,z] in Blockbench units."),
+          rotation: vector3Schema
+            .optional()
+            .describe(
+              "Bone-local rotation [x,y,z] in DEGREES (XYZ Euler), the same " +
+                "visual values shown in Blockbench. Stored 1:1 — no axis " +
+                "inversion (see issue #2). Read back with read_animation_keyframes."
+            ),
+          scale: z
+            .union([vector3Schema, z.number()])
+            .optional()
+            .describe("Uniform scale (number) or per-axis [x,y,z]."),
         })
       )
     )
-    .describe("Keyframes for each bone"),
+    .describe(
+      "Keyframes per bone, keyed by bone/group name. Each value is an array " +
+        "of { time, position?, rotation?, scale? } samples. Times in seconds."
+    ),
   particle_effects: z
     .record(z.string().describe("Effect name"))
     .optional()
@@ -143,6 +157,33 @@ export const getBoneTransformsAtTimeParameters = z.object({
     .describe(
       "Bone/group names to sample. Omit to return every animated bone in the animation."
     ),
+});
+
+export const readAnimationKeyframesParameters = z.object({
+  animation_id: animationIdOptionalSchema,
+  bones: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Bone/group names to read. Omit to return every animated bone in the animation."
+    ),
+  channels: z
+    .array(z.enum(["rotation", "position", "scale"]))
+    .optional()
+    .describe(
+      "Channels to include. Omit for all three (rotation, position, scale)."
+    ),
+  time: z
+    .number()
+    .optional()
+    .describe(
+      "If set, return only keyframes whose time exactly matches (±0.001s)."
+    ),
+  time_range: z
+    .array(z.number())
+    .length(2)
+    .optional()
+    .describe("If set as [t0, t1], return only keyframes with t0 ≤ time ≤ t1."),
 });
 
 export const animationTimelineParameters = z.object({
@@ -413,6 +454,14 @@ export const animationToolDocs: ToolSpec[] = [
       "Samples interpolated bone transforms (position, rotation in DEGREES, scale) at a given time in seconds — numeric animation QA without screenshot heuristics. Rotation uses the same 1:1 visual-euler convention as create_animation. Returns one entry per animated bone (or only the requested `bones`). Read-only: the timeline cursor is restored afterward. Use for loop-pop checks (compare t=0 vs t=length) or rest-pose verification.",
     annotations: { title: "Get Bone Transforms At Time", readOnlyHint: true },
     parameters: getBoneTransformsAtTimeParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "read_animation_keyframes",
+    description:
+      "Read back the RAW stored keyframes (rotation in DEGREES, position, scale) per bone — the authored values, not interpolated samples (use get_bone_transforms_at_time for interpolated). Values round-trip 1:1 with what create_animation / manage_keyframes wrote (after the issue #2 X/Y fix), so this is the tool for automated rotation-regression checks without screenshots. Filter by `bones`, `channels`, exact `time`, or `time_range`. Read-only.",
+    annotations: { title: "Read Animation Keyframes", readOnlyHint: true },
+    parameters: readAnimationKeyframesParameters,
     status: STATUS_STABLE,
   },
 ];
@@ -1473,5 +1522,102 @@ createTool(
       },
     },
     animationToolDocs[8].status
+  );
+
+  createTool(
+    animationToolDocs[9].name,
+    {
+      ...animationToolDocs[9],
+      async execute({ animation_id, bones, channels, time, time_range }) {
+        const animation = animation_id
+          ? Animation.all.find(
+              (a) =>
+                a.uuid === animation_id ||
+                a.name === animation_id ||
+                a.name.endsWith(animation_id)
+            )
+          : Animation.selected;
+
+        if (!animation) {
+          throw new Error(
+            "No animation found or selected. Pass animation_id or select an animation first."
+          );
+        }
+
+        const wantedBones = bones && bones.length ? new Set(bones) : null;
+        const wantedChannels =
+          channels && channels.length
+            ? new Set(channels)
+            : new Set(["rotation", "position", "scale"]);
+
+        const inWindow = (t: number): boolean => {
+          if (typeof time === "number") return Math.abs(t - time) < 0.001;
+          if (time_range)
+            return t >= time_range[0] - 0.001 && t <= time_range[1] + 0.001;
+          return true;
+        };
+
+        // Read a keyframe's stored value as a numeric [x,y,z]. `getArray()`
+        // evaluates the data-point expressions (Molang/number) to plain
+        // numbers — the authored values, with no interpolation applied.
+        const readValue = (kf: {
+          getArray?: () => number[];
+          get?: (axis: string) => number | string;
+        }): number[] => {
+          if (typeof kf.getArray === "function") {
+            const arr = kf.getArray();
+            return arr.map((n) => (typeof n === "number" ? n : Number(n) || 0));
+          }
+          return ["x", "y", "z"].map((axis) => {
+            const v = kf.get?.(axis);
+            return typeof v === "number" ? v : Number(v) || 0;
+          });
+        };
+
+        const result: Record<string, unknown> = {};
+        for (const uuid of Object.keys(animation.animators ?? {})) {
+          const animator = animation.animators[uuid] as {
+            name?: string;
+            rotation?: any[];
+            position?: any[];
+            scale?: any[];
+            getGroup?: () => { name?: string } | undefined;
+          };
+          if (!animator) continue;
+
+          const group =
+            animator.getGroup?.() ?? Group.all.find((g: Group) => g.uuid === uuid);
+          const boneName = animator.name ?? group?.name ?? uuid;
+          if (wantedBones && !wantedBones.has(boneName)) continue;
+
+          const boneChannels: Record<string, unknown[]> = {};
+          for (const channel of ["rotation", "position", "scale"]) {
+            if (!wantedChannels.has(channel)) continue;
+            const kfs = animator[channel as "rotation" | "position" | "scale"];
+            if (!Array.isArray(kfs) || !kfs.length) continue;
+            const entries = kfs
+              .filter((kf: { time: number }) => inWindow(kf.time))
+              .sort((a: { time: number }, b: { time: number }) => a.time - b.time)
+              .map((kf: any) => ({
+                time: kf.time,
+                values: readValue(kf),
+                interpolation: kf.interpolation,
+              }));
+            if (entries.length) boneChannels[channel] = entries;
+          }
+
+          if (Object.keys(boneChannels).length) {
+            result[boneName] = boneChannels;
+          }
+        }
+
+        return JSON.stringify(
+          { animation: animation.name, bones: result },
+          null,
+          2
+        );
+      },
+    },
+    animationToolDocs[9].status
   );
 }

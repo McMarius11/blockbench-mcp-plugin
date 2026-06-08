@@ -10,17 +10,18 @@ Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner
 
 | Category | Tools |
 |---|---|
-| **File I/O (silent)** | `save_project_silent`, `export_gltf_silent`, `force_backup_now`, `open_project_file`, `export_texture_to_png`, `set_project_resolution`, `delete_texture`, `switch_to_tab`, `get_project_state` |
+| **File I/O (silent)** | `save_project_silent`, `export_gltf_silent` (Edit-tab guard), `force_backup_now`, `open_project_file`, `export_texture_to_png`, `set_project_resolution`, `delete_texture`, `switch_to_tab` (idempotent), `get_current_tab`, `get_project_state` |
 | **Plugin lifecycle** | `install_plugin_from_path` |
 | **Outliner & attachment points** | `create_locator`, `create_null_object`, `add_reference_image` |
 | **Symmetry & pivots** | `mirror_elements`, `set_origin` |
 | **Cube editing** | `modify_cube_uv` |
 | **Mesh editing** | `flip_mesh_normals`, `inspect_mesh_geometry`, `mesh_bevel_edge`, `mesh_inset_face`, `mesh_loop_cut`, `select_mesh_elements` (extended with topology modes connected/boundary/inverse) |
 | **UV editing** | `uv_island_transform` |
-| **Animation** | `manage_animations`, `get_bone_transforms_at_time` |
+| **Animation** | `manage_animations`, `get_bone_transforms_at_time`, `read_animation_keyframes` |
 | **Selection inspection** | `get_selection` |
 | **Element inspection & organization** | `get_element_info`, `move_to_group`, `export_model_structure`, `get_bounding_box`, `get_element_statistics`, `highlight_elements`, `group_by_criteria` (+ `find_elements_by_criteria` region/face/texture/bbox/prefix filters) |
-| **Model analysis & UV QA** | `compare_models`, `find_uv_overlaps`, `uv_island_list`, `uv_density_per_face` |
+| **Model analysis & UV QA** | `compare_models`, `validate_rig`, `find_uv_overlaps`, `uv_island_list`, `uv_density_per_face` |
+| **Cube placement (upstream, extended)** | `place_cube` (per-element `parent` for one-call rigged hierarchies) |
 | **Camera (upstream, extended)** | `capture_screenshot` (+ `width`/`height`/`background`/`return_format`), `set_camera_angle` (preserves `zoom` + accepts explicit `zoom`) |
 | **Project I/O** | `convert_project` |
 | **Model import** | `from_java_model` |
@@ -36,13 +37,14 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 | Tool | Purpose |
 |---|---|
 | `save_project_silent(path, compressed?)` | Direct `.bbmodel` write via `Codecs.project.compile()`, updates `Project.save_path`. Default writes plain JSON (modern Blockbench 5.x format); opt in to legacy LZUTF8 with `compressed: true` |
-| `export_gltf_silent(path, embed_textures?, animations?)` | Direct `.glb`/`.gltf` write, no dialog |
+| `export_gltf_silent(path, embed_textures?, animations?, require_edit_tab?)` | Direct `.glb`/`.gltf` write, no dialog. `require_edit_tab` (default true) auto-switches to the Edit tab before compiling and reports `switched_from` — guards Blockbench [#2224](https://github.com/JannisX11/blockbench/issues/2224) (Animate-tab export bakes the scrub frame into the rest pose). Set false to opt out |
 | `open_project_file(path)` | Load existing `.bbmodel` from disk into the running instance — handles both `<lz>`-prefixed LZUTF8 and plain-JSON files; format-aware via `Formats[model.meta.model_format]` |
 | `export_texture_to_png(texture_id, path)` | Write a single project texture to disk as PNG via `texture.canvas.toDataURL` (composites layers automatically) |
 | `force_backup_now()` | Trigger an immediate auto-save backup |
 | `set_project_resolution(width, height)` | Set `texture_width`/`texture_height` (UV coordinate space) |
 | `delete_texture(id)` | Remove orphan textures programmatically |
-| `switch_to_tab(tab)` | Switch `edit`/`paint`/`animate`/`display`/`pose` modes |
+| `switch_to_tab(tab, force?)` | Switch `edit`/`paint`/`animate`/`display`/`pose` modes. Idempotent: returns `{ tab, changed: false }` when already on the target (no UI churn); `force: true` re-selects regardless |
+| `get_current_tab()` | Return the active mode tab as `{ tab }` — lightweight readback so multi-phase builds skip redundant `switch_to_tab` calls |
 | `get_project_state()` | Diagnostic JSON: name, format, save_path, texture sizes, counts, current mode |
 
 ### Model import
@@ -69,6 +71,7 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 
 | Tool | Purpose |
 |---|---|
+| `place_cube` (upstream + extended) | Each entry in `elements[]` may carry its own `parent` (group/bone name or uuid), so a single call parents a whole humanoid body to different bones via `Cube.addTo`. The top-level `group` becomes the batch default for elements without a `parent`. Replaces the per-cube reparent `risky_eval`. Parented cubes keep their authored world position and rotate correctly around the parent bone's origin — no coordinate rebasing needed |
 | `modify_cube_uv(id, faces[])` | Per-face UV / rotation / texture binding / tint / enabled on existing cubes (complements `place_cube` which only sets face UVs at creation) |
 | `flip_mesh_normals(mesh_id?, faces?)` | Flip face normal direction by reversing vertex order via `MeshFace.invert()`. Useful after extrudes go inside-out |
 | `inspect_mesh_geometry(mesh_id?, epsilon?)` | Read-only geometry inspector: vertex/face/edge counts, bounding box, non-manifold edges, boundary edges, zero-area faces, duplicate vertices, unused vertices. Use before glTF export to catch issues that would break Godot import |
@@ -81,6 +84,7 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 | `uv_island_transform(mesh_id?, seed_face?, translate?, scale?, rotate_degrees?)` | Translate / scale / rotate an entire UV island (discovered via `MeshFace.getUVIsland()`) around its centroid. For atlas repacking |
 | `manage_animations(action, animation_id?, ...)` | Animation lifecycle CRUD: `list`, `delete`, `rename`, `set_loop` (once/loop/hold), `set_length`, `select`. Flexible name lookup handles auto-prefixed names like `animation.idle` |
 | `get_bone_transforms_at_time(animation_id?, time, bones?)` | Sample interpolated bone transforms (position, rotation in **degrees**, scale) at a given time via `BoneAnimator.interpolate` — numeric animation QA without screenshot heuristics. Read-only (the timeline cursor is restored). For loop-pop checks (t=0 vs t=length) and rest-pose verification. Same 1:1 visual-euler rotation convention as `create_animation` |
+| `read_animation_keyframes(animation_id?, bones?, channels?, time?, time_range?)` | Read back the **raw authored** keyframes (rotation°/position/scale) per bone — not interpolated samples. Values round-trip 1:1 with `create_animation` (post-#2 fix), so this is the tool for screenshot-free rotation regression. Filter by bone, channel, exact `time`, or `time_range`. Read-only |
 
 ### Selection inspection
 
@@ -106,6 +110,7 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 | Tool | Purpose |
 |---|---|
 | `compare_models(before, after?)` | Diff two model structures by UUID: added / removed / renamed / reparented elements and groups, plus per-face UV changes. Pass two `export_model_structure` dumps, or just `before` to diff against the currently open project. For regression tracking between build iterations |
+| `validate_rig(checks?, pairs?, chains?, …thresholds)` | **EXPERIMENTAL.** Composite live-rig checks → `{ passed, issues[] }`: `bone_orphans` (animated bones with no child elements, automatic), `limb_pivot` (nearest cube corner ≤ `limb_anchor_max` 0.5u from bone origin), `hand_center` (cube center ≤ `hand_bone_center_max` 1.25u), `limb_x_seam` (adjacent chain cubes share a Y cross-section at the X seam). Supply `pairs` (bone↔cube) and `chains` (ordered cubes); thresholds mirror `validate_asset.py` — tune for your rig (issue #20) |
 | `find_uv_overlaps(scope?, group?, min_area?)` | Find faces whose UV rectangles overlap on the **same** texture (the classic cause of texture bleed). Overlaps across different textures are ignored. Returns overlapping face pairs with overlap area, grouped by texture |
 | `uv_island_list(scope?, group?)` | List UV islands (connected components of overlapping/touching face rects) per texture, largest first, with member faces and bounds. For auditing atlas layout |
 | `uv_density_per_face(scope?, group?, limit?)` | Per-face UV density: pixel area, fraction of the atlas, and (for cubes) texels-per-world-unit² — to spot under/over-resolved faces in a 256×256-style atlas workflow |
