@@ -80,6 +80,7 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 |---|---|
 | `uv_island_transform(mesh_id?, seed_face?, translate?, scale?, rotate_degrees?)` | Translate / scale / rotate an entire UV island (discovered via `MeshFace.getUVIsland()`) around its centroid. For atlas repacking |
 | `manage_animations(action, animation_id?, ...)` | Animation lifecycle CRUD: `list`, `delete`, `rename`, `set_loop` (once/loop/hold), `set_length`, `select`. Flexible name lookup handles auto-prefixed names like `animation.idle` |
+| `get_bone_transforms_at_time(animation_id?, time, bones?)` | Sample interpolated bone transforms (position, rotation in **degrees**, scale) at a given time via `BoneAnimator.interpolate` — numeric animation QA without screenshot heuristics. Read-only (the timeline cursor is restored). For loop-pop checks (t=0 vs t=length) and rest-pose verification. Same 1:1 visual-euler rotation convention as `create_animation` |
 
 ### Selection inspection
 
@@ -93,7 +94,28 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 |---|---|
 | `get_element_info(ids?, group?, selected_only?, include_groups?, include_faces?, include_mesh_geometry?, limit?)` | Structured JSON dump of element data — the read counterpart to `modify_cube`. Cubes: from/to, computed size, origin, rotation, inflate, box-UV, visibility/shade, and (default) per-face uv/texture/rotation/tint/enabled. Meshes: transform, vertex/face counts, local bounding box, optional full geometry. Groups: transform + child count. Scope via `ids` / `group` / `selected_only`, or omit all for the whole project. Read-only; pair with `list_outline` (hierarchy) and `find_elements_by_criteria` (IDs). Use instead of `risky_eval` for offline analysis of imported reference models |
 | `move_to_group(ids, target_group)` | Reparent existing cubes/meshes/groups into a target group (or `"root"`). The complement to `add_group` (which only creates empty groups) — turns a flat import into an organized outliner. Refuses to move a group into itself or a descendant. The caller decides which element goes where (e.g. from a `get_element_info` dump); this just performs the move |
-| `find_elements_by_criteria` (upstream + extended) | Adds `region_min`/`region_max` (keep elements whose cube center / mesh origin falls inside a zone box) and `face_enabled` (keep only cubes with a given face enabled), on top of the upstream name/type/parent/size filters |
+| `export_model_structure(scope?, group?, include_animations?, include_faces?, max_elements?)` | One-shot bulk JSON dump: project metadata + full group hierarchy + every cube/mesh (with geometry and per-face data) + textures + optional animation summary. Replaces dozens of `get_element_info` roundtrips; the natural `before`/`after` input to `compare_models`. Respects `max_elements` and flags `truncated` |
+| `get_bounding_box(target, group_id?, coordinate_space?)` | Aggregated `{min,max,center,extents}` for `selection` / `group` / `project` / `visible`. `world` space is rotation/parent-aware (THREE `Box3`, for auto-framing screenshots); `local` is the raw from/to + vertex extent. Replaces ad-hoc `risky_eval` bbox queries |
+| `get_element_statistics(scope?, group?)` | Aggregated stats: totals, cube count by texture, cube-size histogram, estimated triangle count (cubes = 2 tris/enabled face, meshes fan-triangulated), cubes per group. For poly budgeting and comparing reference models |
+| `group_by_criteria(group_name, parent_group?, ...filters, limit?)` | Find elements (name / type / region / texture filters) **and** move them into a NEW group in one step — the write-side companion to `find_elements_by_criteria`. Speeds up organizing flat imports into zones (receiver / barrel / stock). Groups themselves are never moved |
+| `highlight_elements(ids, color?, duration_ms?, clear_previous?)` | Temporarily highlight elements in the viewport — non-destructive (never touches geometry/materials). Via selection, or with a hex `color` drawing a temporary `THREE.Box3Helper` box overlay (auto-cleans after `duration_ms`, default 2000 ms flash). For visually confirming `find_elements_by_criteria` results |
+| `find_elements_by_criteria` (upstream + extended) | Adds `region_min`/`region_max` (cube center / mesh origin inside a zone box), `bbox_overlaps` (cube from/to box **intersects** a region, not just its center), `face_enabled` (cubes with a given face enabled), `texture_name`/`texture_uuid` (faces using a texture), and `name_prefix`/`name_suffix`, on top of the upstream name/type/parent/size filters |
+
+### Model analysis & UV QA
+
+| Tool | Purpose |
+|---|---|
+| `compare_models(before, after?)` | Diff two model structures by UUID: added / removed / renamed / reparented elements and groups, plus per-face UV changes. Pass two `export_model_structure` dumps, or just `before` to diff against the currently open project. For regression tracking between build iterations |
+| `find_uv_overlaps(scope?, group?, min_area?)` | Find faces whose UV rectangles overlap on the **same** texture (the classic cause of texture bleed). Overlaps across different textures are ignored. Returns overlapping face pairs with overlap area, grouped by texture |
+| `uv_island_list(scope?, group?)` | List UV islands (connected components of overlapping/touching face rects) per texture, largest first, with member faces and bounds. For auditing atlas layout |
+| `uv_density_per_face(scope?, group?, limit?)` | Per-face UV density: pixel area, fraction of the atlas, and (for cubes) texels-per-world-unit² — to spot under/over-resolved faces in a 256×256-style atlas workflow |
+
+### Camera (upstream tools, extended)
+
+| Tool | Purpose |
+|---|---|
+| `capture_screenshot` (extended) | Adds `width`/`height` (fixed output resolution for reproducible QA frames; both required together), `background` (`"transparent"` or a hex color, to avoid theme-dependent backdrops), and `return_format: "file"` (writes a PNG to `path` instead of returning it inline). The live viewport is restored after capture |
+| `set_camera_angle` (extended) | Now **preserves** the current zoom across angle changes (previously every call reset it) and accepts an optional explicit `zoom` for reproducible framing. `get_project_info` also reports a `camera` block (projection / zoom / position / target) so zoom is queryable without `risky_eval` |
 
 ### Symmetry & pivots
 
