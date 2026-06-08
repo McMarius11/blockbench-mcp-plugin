@@ -510,12 +510,30 @@ class TestRunner:
         ok, text = self.c.call("save_project_silent", {"path": bbmodel})
         self.expect_ok("save round_trip.bbmodel", ok, text)
 
+        # Regression: open_project_file must open exactly ONE tab. It used to
+        # open two (a redundant newProject() empty orphan + the codec.load one).
+        def _tab_count() -> int:
+            ok2, t2 = self.c.call(
+                "risky_eval", {"code": "ModelProject.all.length"}
+            )
+            try:
+                return int(json.loads(t2)) if ok2 else -1
+            except (ValueError, TypeError):
+                return -1
+
+        before_tabs = _tab_count()
         ok, text = self.c.call("open_project_file", {"path": bbmodel})
         self.expect_ok(
             "open_project_file (load saved file)",
             ok,
             text,
             also_check=lambda t: "format=free" in t,
+        )
+        after_tabs = _tab_count()
+        self.expect_ok(
+            "open_project_file opens exactly one tab (no orphan)",
+            after_tabs - before_tabs == 1,
+            f"tab delta was {after_tabs - before_tabs} (before={before_tabs}, after={after_tabs})",
         )
 
         ok, text = self.c.call("get_project_state", {})
