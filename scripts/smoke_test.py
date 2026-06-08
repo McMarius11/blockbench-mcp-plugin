@@ -1091,6 +1091,34 @@ class TestRunner:
 # --------------------------------------------------------------------------- #
 
 
+def _list_project_uuids(client: "MCPClient") -> set[str]:
+    """Snapshot the UUIDs of all currently-open projects."""
+    ok, text = client.call(
+        "risky_eval", {"code": "JSON.stringify(ModelProject.all.map(p=>p.uuid))"}
+    )
+    if not ok:
+        return set()
+    try:
+        return set(json.loads(json.loads(text)))
+    except (ValueError, TypeError):
+        return set()
+
+
+def _close_created_projects(client: "MCPClient", pre_uuids: set[str]) -> int:
+    """Close every project opened during the run (uuid not in the pre-run
+    snapshot), leaving the user's pre-existing tabs untouched. Closes by UUID,
+    one at a time, so we never force-close a tab we didn't create."""
+    closed = 0
+    for uuid in _list_project_uuids(client) - pre_uuids:
+        code = (
+            f"(()=>{{const x=ModelProject.all.find(q=>q.uuid==='{uuid}');"
+            f"if(x){{x.close(true);return true;}}return false;}})()"
+        )
+        client.call("risky_eval", {"code": code})
+        closed += 1
+    return closed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1099,7 +1127,7 @@ def main() -> int:
     parser.add_argument(
         "--keep-test-files",
         action="store_true",
-        help="Keep the temp dir with test artifacts after run",
+        help="Keep the temp dir with test artifacts AND the test project tabs after run",
     )
     args = parser.parse_args()
 
@@ -1110,6 +1138,9 @@ def main() -> int:
 
     workdir = tempfile.mkdtemp(prefix="bb-mcp-smoke-")
     print(f"  workdir: {workdir}")
+
+    # Snapshot pre-existing tabs so cleanup only closes what this run creates.
+    pre_uuids = _list_project_uuids(client)
 
     runner = TestRunner(client, workdir)
 
@@ -1134,9 +1165,12 @@ def main() -> int:
         runner.t_new_feature_tools()
     finally:
         if args.keep_test_files:
-            print(f"\nkeeping test artifacts at {workdir}")
+            print(f"\nkeeping test artifacts at {workdir} (and test project tabs)")
         else:
             shutil.rmtree(workdir, ignore_errors=True)
+            closed = _close_created_projects(client, pre_uuids)
+            if closed:
+                print(f"\ncleaned up {closed} test project tab(s)")
 
     dt = time.time() - t0
     total = runner.passed + runner.failed
