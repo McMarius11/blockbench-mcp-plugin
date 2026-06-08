@@ -18,13 +18,12 @@ export const placeCubeParameters = z.object({
     .string()
     .optional()
     .describe(
-      "TOP-LEVEL parameter (not per-element): a single destination group/bone " +
-        "applied to ALL cubes in this call. Accepts a group UUID or name, or " +
-        '"root" for the top level. There is no per-element parent here — to ' +
-        "build a parented hierarchy, either issue one `place_cube` call per " +
-        "target group, or place flat and reparent afterward with " +
-        "`move_to_group` / `group_by_criteria`. An unknown name falls back to " +
-        "root (no error)."
+      "TOP-LEVEL batch default: a single destination group/bone applied to " +
+        "all cubes that do NOT carry their own `parent`. Accepts a group UUID " +
+        'or name, or "root" for the top level. For a parented hierarchy in one ' +
+        "call, set `parent` per element in `elements[]` (it overrides this); " +
+        "this top-level value then acts as the fallback for elements without " +
+        "a `parent`. An unknown name falls back to root (no error)."
     ),
   faces: z
     .union([
@@ -160,7 +159,7 @@ export const cubeToolDocs: ToolSpec[] = [
   {
     name: "place_cube",
     description:
-      "Places a cube of the given size at the specified position. Texture and group are optional.",
+      "Places one or more cubes at the given positions. Texture is optional. Parenting: set a per-element `parent` (group/bone) inside each `elements[]` entry to parent cubes to different bones in a single call, or use the top-level `group` as a shared default. Parented cubes keep their authored world position and rotate correctly around the parent bone's origin (no coordinate rebasing needed).",
     annotations: {
       title: "Place Cube",
       destructiveHint: true,
@@ -213,16 +212,24 @@ createTool(cubeToolDocs[0].name, {
 
     // @ts-expect-error Blockbench global utility available at runtime
     const groups = getAllGroups();
-    const outlinerGroup = group === "root"
-      ? "root"
-      : groups.find((g: any) => g.name === group || g.uuid === group) ?? "root";
+    const resolveGroup = (ref: string | undefined): Group | "root" => {
+      if (!ref || ref === "root") return "root";
+      return (
+        groups.find((g: any) => g.name === ref || g.uuid === ref) ?? "root"
+      );
+    };
+    // Top-level `group` is the batch default; each element may override it
+    // with its own `parent` so one call can build a parented hierarchy
+    // (issue #22). An unknown per-element parent falls back to the batch
+    // group rather than silently dropping to root.
+    const batchGroup = resolveGroup(group);
 
     const autouv =
       faces === true ||
       (Array.isArray(faces) &&
         faces.every((face) => typeof face === "string"));
 
-    const cubes = elements.map((element: Cube) => {
+    const cubes = elements.map((element: Cube & { parent?: string }) => {
       const cube = new Cube({
         autouv: autouv ? 1 : 0,
         name: element.name,
@@ -232,7 +239,14 @@ createTool(cubeToolDocs[0].name, {
         rotation: element.rotation as [number, number, number],
       }).init();
 
-      cube.addTo(outlinerGroup);
+      let target: Group | "root" = batchGroup;
+      if (element.parent) {
+        const perElement = resolveGroup(element.parent);
+        target = perElement === "root" && element.parent !== "root"
+          ? batchGroup
+          : perElement;
+      }
+      cube.addTo(target);
 
       if (!autouv && Array.isArray(faces)) {
         faces.forEach(({ face, uv }) => {

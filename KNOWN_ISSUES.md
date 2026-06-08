@@ -2,7 +2,7 @@
 
 Things that don't work, are deferred, or carry a caveat in this fork. Honest list — not blockers for the boomer-shooter pipeline this fork was built for, but worth knowing before you hit them.
 
-Last audit: 2026-05-25 (post upstream-sync merge to v1.6.0).
+Last audit: 2026-06-08 (post pipeline issue batches #2–#16 and #19–#24; 154 tools, `bun test` 66, smoke `[18/18]` 85 assertions).
 
 ---
 
@@ -171,7 +171,7 @@ These are fixable but require infrastructure work disproportionate to current us
 
 **Symptom**
 
-The 71-assertion test suite (34 unit + 37 integration) must be run manually:
+The test suite (66 unit + 85 integration assertions) must be run manually:
 
 ```bash
 bun test                              # unit tests, no Blockbench needed
@@ -193,7 +193,7 @@ Estimated effort: 1-2 days to get a stable green pipeline.
 
 **Workaround**
 
-Run smoke test manually before each commit that touches `server/tools/`. The 71 tests complete in ~2s, so the ergonomics are tolerable.
+Run smoke test manually before each commit that touches `server/tools/`. The full suite completes in a few seconds, so the ergonomics are tolerable.
 
 **Path to fix**
 
@@ -276,7 +276,7 @@ typing the callback params — a multi-hour effort, not 30-45 min.
 
 **Symptom**
 
-`dist/mcp.js` is ~602 KB minified (up from 587 KB after the v1.6.0 upstream-sync merge added the history/export tools, prompt-loader, resource-URI, and i18n). Includes Hytale tools (~50 KB) and some upstream features the boomer-shooter pipeline doesn't use.
+`dist/mcp.js` is ~671 KB minified (grown from 587 KB across the v1.6.0 upstream-sync merge and the two pipeline issue batches). Includes Hytale tools (~50 KB) and some upstream features the boomer-shooter pipeline doesn't use.
 
 **Why deferred**
 
@@ -292,7 +292,9 @@ Build-time conditional `if (HYTALE_ENABLED) { ... }` blocks tree-shakable by `--
 
 **Symptom**
 
-~30 tools inherited from upstream are still labelled `STATUS_EXPERIMENTAL` (animation graph editor, batch keyframe ops, paint brush presets, etc.). They work in the test cases we've hit but may have edge-case failures unknown to us.
+~30 tools inherited from upstream are still labelled `STATUS_EXPERIMENTAL` (animation graph editor, batch keyframe ops, paint brush presets, etc.). They work in the test cases we've hit but may have edge-case failures unknown to us. The fork adds one more: **`validate_rig` (#20)** — read-only, so it can't corrupt state, but its `limb_pivot`/`hand_center`/`limb_x_seam` thresholds default to `validate_asset.py` values and should be tuned per rig.
+
+> **Validated-and-dropped (2026-06-08):** A prototyped `localize_elements_to_parent` (#23) was removed *before* its first release after a live test proved it harmful. The premise — subtract the parent bone origin from a parented cube's from/to so it "rotates around the pivot" — is false for plain Blockbench groups: a live bone-rotation test showed plain `place_cube`/`addTo` parenting *already* orbits the bone pivot correctly, and the subtraction instead displaced the cube by the origin (rest center `[9,1,1] → [1,1,1]`, 8u off-bone). Lesson: geometry-mutating tools modeled on a downstream `risky_eval` workaround must be live-validated for *position*, not just that the math runs. Issue #23 reopened with the evidence.
 
 **Why deferred**
 

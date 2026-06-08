@@ -2,7 +2,7 @@
 /// <reference types="blockbench-types" />
 import { z } from "zod";
 import { createTool, type ToolSpec } from "@/lib/factories";
-import { STATUS_STABLE } from "@/lib/constants";
+import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
 import {
   diffModelStructure,
   findUvOverlaps,
@@ -63,6 +63,67 @@ export const uvDensityPerFaceParameters = uvScopeSchema.extend({
     .describe("Maximum number of faces to report."),
 });
 
+export const validateRigParameters = z.object({
+  checks: z
+    .array(z.enum(["limb_pivot", "hand_center", "limb_x_seam", "bone_orphans"]))
+    .optional()
+    .describe(
+      "Which checks to run. Omit to run all applicable. `bone_orphans` runs " +
+        "automatically over animated bones; `limb_pivot`/`hand_center` need " +
+        "`pairs`; `limb_x_seam` needs `chains`."
+    ),
+  pairs: z
+    .array(
+      z.object({
+        bone: z.string().describe("Bone/group name or uuid."),
+        cube: z.string().describe("Cube name or uuid bound to this bone."),
+        kind: z
+          .enum(["limb", "hand"])
+          .optional()
+          .default("limb")
+          .describe(
+            "`limb`: nearest cube corner must be within `limb_anchor_max` of " +
+              "the bone origin. `hand`: cube CENTER must be within " +
+              "`hand_bone_center_max` of the bone origin."
+          ),
+      })
+    )
+    .optional()
+    .describe(
+      "Bone↔cube bindings to check (e.g. ARM_BONE_CUBE_PAIRS). Drives " +
+        "limb_pivot and hand_center."
+    ),
+  chains: z
+    .array(
+      z.object({
+        name: z.string().optional().describe("Label for the chain (e.g. 'R_arm')."),
+        cubes: z
+          .array(z.string())
+          .min(2)
+          .describe(
+            "Ordered cube names/uuids proximal→distal (e.g. [arm, forearm, hand]). Adjacent cubes are checked for a shared Y cross-section at the X seam."
+          ),
+      })
+    )
+    .optional()
+    .describe("Ordered limb cube chains for the limb_x_seam check."),
+  limb_anchor_max: z
+    .number()
+    .optional()
+    .default(0.5)
+    .describe("Max distance (BB units) from nearest cube corner to bone origin for limb_pivot."),
+  hand_bone_center_max: z
+    .number()
+    .optional()
+    .default(1.25)
+    .describe("Max distance (BB units) from cube center to bone origin for hand_center."),
+  seam_tolerance: z
+    .number()
+    .optional()
+    .default(0.01)
+    .describe("Max allowed mismatch (BB units) in shared Y min/max between adjacent chain cubes."),
+});
+
 export const analysisToolDocs: ToolSpec[] = [
   {
     name: "compare_models",
@@ -95,6 +156,14 @@ export const analysisToolDocs: ToolSpec[] = [
     annotations: { title: "UV Density Per Face", readOnlyHint: true },
     parameters: uvDensityPerFaceParameters,
     status: STATUS_STABLE,
+  },
+  {
+    name: "validate_rig",
+    description:
+      "Composite rig validation against the LIVE project (no .bbmodel parse): `bone_orphans` (animated bones with zero child elements — runs automatically), `limb_pivot` (nearest cube corner within `limb_anchor_max` of the bone origin), `hand_center` (cube center within `hand_bone_center_max` of the bone origin), and `limb_x_seam` (adjacent cubes in a proximal→distal chain share a Y cross-section at the X seam). Supply `pairs` (bone↔cube) and `chains` (ordered cubes) to drive the geometric checks. Returns `{ passed, issues[] }` with per-issue delta vs threshold. EXPERIMENTAL: thresholds mirror validate_asset.py humanoid rules — tune for your rig. See issue #20.",
+    annotations: { title: "Validate Rig", readOnlyHint: true },
+    parameters: validateRigParameters,
+    status: STATUS_EXPERIMENTAL,
   },
 ];
 
@@ -316,4 +385,160 @@ export function registerAnalysisTools() {
       );
     },
   }, analysisToolDocs[3].status);
+
+  // validate_rig
+  createTool(analysisToolDocs[4].name, {
+    ...analysisToolDocs[4],
+    async execute({
+      checks,
+      pairs,
+      chains,
+      limb_anchor_max,
+      hand_bone_center_max,
+      seam_tolerance,
+    }) {
+      const run = (name: string): boolean => !checks || checks.includes(name as any);
+      const issues: Array<Record<string, unknown>> = [];
+
+      // @ts-ignore - Blockbench globals
+      const findCube = (ref: string): Cube | undefined =>
+        // @ts-ignore
+        Cube.all.find((c: Cube) => c.uuid === ref || c.name === ref);
+      // @ts-ignore
+      const findGroup = (ref: string): Group | undefined =>
+        // @ts-ignore
+        Group.all.find((g: Group) => g.uuid === ref || g.name === ref);
+
+      const dist = (a: number[], b: number[]): number =>
+        Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      const cubeCenter = (c: { from: number[]; to: number[] }): number[] => [
+        (c.from[0] + c.to[0]) / 2,
+        (c.from[1] + c.to[1]) / 2,
+        (c.from[2] + c.to[2]) / 2,
+      ];
+      // The 8 corners of a cube's from/to box.
+      const cubeCorners = (c: { from: number[]; to: number[] }): number[][] => {
+        const xs = [c.from[0], c.to[0]];
+        const ys = [c.from[1], c.to[1]];
+        const zs = [c.from[2], c.to[2]];
+        const out: number[][] = [];
+        for (const x of xs) for (const y of ys) for (const z of zs) out.push([x, y, z]);
+        return out;
+      };
+
+      // limb_pivot + hand_center (driven by pairs)
+      if (pairs && pairs.length) {
+        for (const pair of pairs) {
+          const bone = findGroup(pair.bone);
+          const cube = findCube(pair.cube);
+          if (!bone) {
+            issues.push({ check: "binding", bone: pair.bone, error: "bone not found" });
+            continue;
+          }
+          if (!cube) {
+            issues.push({ check: "binding", cube: pair.cube, error: "cube not found" });
+            continue;
+          }
+          const origin = (bone.origin ?? [0, 0, 0]) as number[];
+          if (pair.kind === "hand") {
+            if (!run("hand_center")) continue;
+            const delta = dist(cubeCenter(cube as any), origin);
+            if (delta > hand_bone_center_max) {
+              issues.push({
+                check: "hand_center",
+                bone: pair.bone,
+                cube: pair.cube,
+                delta: Number(delta.toFixed(3)),
+                max: hand_bone_center_max,
+              });
+            }
+          } else {
+            if (!run("limb_pivot")) continue;
+            const delta = Math.min(
+              ...cubeCorners(cube as any).map((corner) => dist(corner, origin))
+            );
+            if (delta > limb_anchor_max) {
+              issues.push({
+                check: "limb_pivot",
+                bone: pair.bone,
+                cube: pair.cube,
+                delta: Number(delta.toFixed(3)),
+                max: limb_anchor_max,
+              });
+            }
+          }
+        }
+      }
+
+      // limb_x_seam (driven by chains)
+      if (run("limb_x_seam") && chains && chains.length) {
+        for (const chain of chains) {
+          const resolved = chain.cubes.map((ref: string) => ({ ref, cube: findCube(ref) }));
+          for (let i = 0; i < resolved.length - 1; i++) {
+            const a = resolved[i];
+            const b = resolved[i + 1];
+            if (!a.cube || !b.cube) {
+              issues.push({
+                check: "limb_x_seam",
+                chain: chain.name,
+                error: `cube not found: ${!a.cube ? a.ref : b.ref}`,
+              });
+              continue;
+            }
+            // Adjacent limb cubes should share the same Y cross-section where
+            // they meet along X. Compare their Y min/max extents.
+            const ay = [Math.min(a.cube.from[1], a.cube.to[1]), Math.max(a.cube.from[1], a.cube.to[1])];
+            const by = [Math.min(b.cube.from[1], b.cube.to[1]), Math.max(b.cube.from[1], b.cube.to[1])];
+            const dMin = Math.abs(ay[0] - by[0]);
+            const dMax = Math.abs(ay[1] - by[1]);
+            if (dMin > seam_tolerance || dMax > seam_tolerance) {
+              issues.push({
+                check: "limb_x_seam",
+                chain: chain.name,
+                between: [a.ref, b.ref],
+                y_min_delta: Number(dMin.toFixed(3)),
+                y_max_delta: Number(dMax.toFixed(3)),
+                tolerance: seam_tolerance,
+              });
+            }
+          }
+        }
+      }
+
+      // bone_orphans (automatic over animated bones)
+      if (run("bone_orphans")) {
+        const animatedUuids = new Set<string>();
+        // @ts-ignore - Animation global
+        if (typeof Animation !== "undefined" && Animation.all) {
+          // @ts-ignore
+          for (const anim of Animation.all) {
+            for (const uuid of Object.keys(anim.animators ?? {})) {
+              // Only group/bone animators (skip effect animators which use
+              // non-group uuids).
+              if (findGroup(uuid)) animatedUuids.add(uuid);
+            }
+          }
+        }
+        for (const uuid of animatedUuids) {
+          const bone = findGroup(uuid);
+          if (!bone) continue;
+          // @ts-ignore - Cube/Mesh globals
+          const hasChild =
+            // @ts-ignore
+            Cube.all.some((c: Cube) => c.parent === bone) ||
+            // @ts-ignore
+            (typeof Mesh !== "undefined" && Mesh.all.some((m: Mesh) => m.parent === bone));
+          if (!hasChild) {
+            issues.push({ check: "bone_orphans", bone: bone.name, uuid });
+          }
+        }
+      }
+
+      return JSON.stringify(
+        { passed: issues.length === 0, issue_count: issues.length, issues },
+        null,
+        2
+      );
+    },
+  }, analysisToolDocs[4].status);
 }

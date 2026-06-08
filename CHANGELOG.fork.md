@@ -6,6 +6,36 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ---
 
+## [unreleased] — 2026-06-08 — pipeline issue batch #2 (#19–#24)
+
+Second wave from the Asset Generator Blockbench pipeline — the build/animation/export-loop gaps left after the #2–#16 batch. Build (`bun run build`) + `bun test` (66/66) green, smoke `[18/18]`, `bun run docs:build` reports **154 tools**. `validate_rig` ships **EXPERIMENTAL** (threshold heuristics mirror `validate_asset.py`; tune for your rig).
+
+> **#23 `localize_elements_to_parent` was prototyped, then dropped before release.** A live test (bone at origin `[8,0,0]`, child cube animated 90°) showed that plain `place_cube`/`addTo` parenting *already* rotates the cube correctly around the bone pivot (cube center orbits the pivot at the authored radius). Subtracting the parent origin — the workaround the issue requested — instead **displaced** the cube by the origin amount (rest center moved `[9,1,1] → [1,1,1]`, 8u off the bone). So the tool would corrupt correctly-placed geometry rather than fix a pivot bug. Removed; issue #23 reopened with the evidence. Use `place_cube` per-element `parent` (#22) — it needs no coordinate rebasing.
+
+### Added — workflow/tab tools (`server/tools/silent.ts`)
+
+- **`get_current_tab()` → `{ tab }`** (#19) — read the active mode (edit/paint/animate/display/pose) without `get_project_state`, so multi-phase builds can skip redundant switches.
+- **`switch_to_tab` now idempotent** (#19) — a no-op returning `{ tab, changed: false }` when already on the target tab; `force: true` re-selects regardless. Return value is now JSON (`{ tab, changed, previous }`).
+- **`export_gltf_silent` Edit-tab guard** (#24) — new `require_edit_tab` (default `true`): if the active tab isn't `edit`, auto-switches first and notes `switched_from` in the response, dodging Blockbench [#2224](https://github.com/JannisX11/blockbench/issues/2224) (Animate-tab export bakes the scrub frame into the rest pose). Set `false` to opt out.
+
+### Added — per-element parenting (`server/tools/cubes.ts`, `lib/zodObjects.ts`)
+
+- **`place_cube` per-element `parent`** (#22, supersedes doc-only #16) — each entry in `elements[]` may carry its own `parent` (group/bone name or uuid), so one call parents a whole humanoid body to different bones. Top-level `group` becomes the batch default/fallback. Replaces the per-cube `addTo` `risky_eval`.
+
+### Added — animation readback (`server/tools/animation.ts`)
+
+- **`read_animation_keyframes(animation_id?, bones?, channels?, time?, time_range?)`** (#21) — reads back RAW authored keyframes (rotation°/position/scale) per bone, not interpolated samples; values round-trip 1:1 with `create_animation` (post-#2), enabling screenshot-free rotation regression. Read-only.
+
+### Added — rig QA (EXPERIMENTAL)
+
+- **`validate_rig(checks?, pairs?, chains?, …thresholds)`** (#20, `server/tools/analysis.ts`) — composite live checks: `bone_orphans` (animated bones with no child elements, automatic), `limb_pivot` (nearest cube corner ≤ `limb_anchor_max` 0.5u from bone origin), `hand_center` (cube center ≤ `hand_bone_center_max` 1.25u), `limb_x_seam` (adjacent chain cubes share a Y cross-section at the X seam). Returns `{ passed, issues[] }`. Read-only. Thresholds parameterized; defaults mirror `validate_asset.py`.
+
+### Docs
+
+- `create_animation` keyframe schema fields now describe units (seconds / degrees / Blockbench units) and the 1:1 rotation convention inline (reinforces #15); `place_cube` description + `group`/`parent` params document the new per-element parenting (closes #16).
+
+---
+
 ## [unreleased] — 2026-06-08 — maintainer issue batch (#2–#16)
 
 Addresses the issue batch filed from the Asset Generator Blockbench pipeline (own fork issues #2–#16). All items verified live against Blockbench 5.1.x and covered by smoke group `[17/17]` + 14 new `bun test` units.

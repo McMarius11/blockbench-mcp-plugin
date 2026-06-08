@@ -217,6 +217,9 @@ class TestRunner:
             "find_uv_overlaps",
             "uv_island_list",
             "uv_density_per_face",
+            "get_current_tab",
+            "read_animation_keyframes",
+            "validate_rig",
         }
         missing = required - names
         if missing:
@@ -1085,6 +1088,108 @@ class TestRunner:
             also_check=lambda _: os.path.exists(shot) and os.path.getsize(shot) > 0,
         )
 
+    def t_issue_batch2(self) -> None:
+        """Second issue batch (#19-#24): per-element place_cube parent,
+        read_animation_keyframes, validate_rig, get_current_tab / idempotent
+        switch_to_tab, export Edit-tab guard. (#23 localize_elements_to_parent
+        was removed — see issue #23: parenting already rotates correctly around
+        the bone pivot; subtracting the parent origin displaced geometry.)"""
+        print("\n[18/18] pipeline issue batch #2 (#19-#24)")
+
+        self.c.call("create_project", {"name": "batch2_smoke", "format": "free"})
+        self.c.call("create_texture", {"name": "btex", "width": 16, "height": 16,
+                                       "fill_color": "#cc8844", "layer_name": "base"})
+        # Two bones at distinct origins for per-element parenting.
+        self.c.call("add_group", {"name": "RArm", "origin": [0, 8, 0], "rotation": [0, 0, 0]})
+        self.c.call("add_group", {"name": "Chest", "origin": [0, 12, 0], "rotation": [0, 0, 0]})
+        faces = ["north", "south", "east", "west", "up", "down"]
+
+        # #22: per-element parent — two cubes, two different bones, one call.
+        ok, text = self.c.call("place_cube", {"elements": [
+            {"name": "rarm_box", "from": [0, 8, 0], "to": [2, 12, 2], "origin": [0, 8, 0],
+             "parent": "RArm"},
+            {"name": "chest_box", "from": [0, 12, 0], "to": [4, 16, 3], "origin": [0, 12, 0],
+             "parent": "Chest"},
+        ], "texture": "btex", "faces": faces})
+        self.expect_ok("place_cube accepts per-element parent (#22)", ok, text)
+        ok, text = self.c.call("get_element_info", {"ids": ["rarm_box", "chest_box"]})
+        self.expect_ok(
+            "place_cube parented each cube to its own bone (#22)", ok, text,
+            also_check=lambda t: {e["name"]: e.get("parent") for e in json.loads(t)["elements"]}
+            == {"rarm_box": "RArm", "chest_box": "Chest"},
+        )
+
+        # #21: read_animation_keyframes — round-trips create_animation 1:1.
+        self.c.call("create_animation", {"name": "rk", "loop": True, "animation_length": 1.0,
+                                         "bones": {"RArm": [{"time": 0, "rotation": [0, 0, 0]},
+                                                            {"time": 1, "rotation": [0, 45, 0]}]}})
+        ok, text = self.c.call("read_animation_keyframes",
+                               {"animation_id": "rk", "channels": ["rotation"]})
+        self.expect_ok(
+            "read_animation_keyframes returns stored rotation 1:1 (#21)", ok, text,
+            also_check=lambda t: any(
+                abs(kf["values"][1] - 45) < 0.01
+                for kf in json.loads(t)["bones"]["RArm"]["rotation"]
+                if abs(kf["time"] - 1.0) < 0.01
+            ),
+        )
+
+        # #20: validate_rig — limb_pivot passes (cube corner == bone origin),
+        # fails on a deliberate far pair; bone_orphans flags childless bone.
+        self.c.call("add_group", {"name": "Orphan", "origin": [20, 0, 0], "rotation": [0, 0, 0]})
+        # Animate the orphan bone so bone_orphans considers it.
+        self.c.call("create_animation", {"name": "orph", "loop": False, "animation_length": 1.0,
+                                         "bones": {"Orphan": [{"time": 0, "rotation": [0, 0, 0]}]}})
+        ok, text = self.c.call("validate_rig", {
+            "checks": ["limb_pivot", "bone_orphans"],
+            "pairs": [{"bone": "Chest", "cube": "chest_box", "kind": "limb"}],
+        })
+        self.expect_ok(
+            "validate_rig: limb_pivot passes, flags orphan bone (#20)", ok, text,
+            also_check=lambda t: (lambda r: r["passed"] is False
+                                  and not any(i["check"] == "limb_pivot" for i in r["issues"])
+                                  and any(i["check"] == "bone_orphans" and i["bone"] == "Orphan"
+                                          for i in r["issues"]))(json.loads(t)),
+        )
+        ok, text = self.c.call("validate_rig", {
+            "checks": ["limb_pivot"],
+            "pairs": [{"bone": "Orphan", "cube": "chest_box", "kind": "limb"}],
+        })
+        self.expect_ok(
+            "validate_rig: limb_pivot fails on far cube (#20)", ok, text,
+            also_check=lambda t: any(i["check"] == "limb_pivot" for i in json.loads(t)["issues"]),
+        )
+
+        # #19: get_current_tab + idempotent switch_to_tab.
+        self.c.call("switch_to_tab", {"tab": "animate"})
+        ok, text = self.c.call("get_current_tab", {})
+        self.expect_ok("get_current_tab reports active tab (#19)", ok, text,
+                       also_check=lambda t: json.loads(t)["tab"] == "animate")
+        ok, text = self.c.call("switch_to_tab", {"tab": "animate"})
+        self.expect_ok(
+            "switch_to_tab idempotent no-op (#19)", ok, text,
+            also_check=lambda t: json.loads(t)["changed"] is False,
+        )
+        ok, text = self.c.call("switch_to_tab", {"tab": "edit"})
+        self.expect_ok(
+            "switch_to_tab changes when needed (#19)", ok, text,
+            also_check=lambda t: json.loads(t)["changed"] is True,
+        )
+
+        # #24: export_gltf_silent Edit-tab guard — from animate, auto-switch.
+        self.c.call("switch_to_tab", {"tab": "animate"})
+        gltf = os.path.join(self.workdir, "batch2.glb")
+        ok, text = self.c.call("export_gltf_silent", {"path": gltf})
+        self.expect_ok(
+            "export_gltf_silent auto-switches off animate tab (#24)", ok, text,
+            also_check=lambda t: "switched_from" in t or "from 'animate'" in t,
+        )
+        ok, text = self.c.call("get_current_tab", {})
+        self.expect_ok(
+            "export guard left project on edit tab (#24)", ok, text,
+            also_check=lambda t: json.loads(t)["tab"] == "edit",
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -1163,6 +1268,7 @@ def main() -> int:
         runner.t_ignore_textures()
         runner.t_cit_texture_resolution()
         runner.t_new_feature_tools()
+        runner.t_issue_batch2()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir} (and test project tabs)")

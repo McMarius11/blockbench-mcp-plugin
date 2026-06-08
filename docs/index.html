@@ -18,7 +18,7 @@
 
       <div class="nav-group">
         <p class="nav-heading">Overview</p>
-        <a href="#tools" class="nav-link">Tools <span class="count">(151)</span></a>
+        <a href="#tools" class="nav-link">Tools <span class="count">(154)</span></a>
         <a href="#prompts" class="nav-link">Prompts <span class="count">(6)</span></a>
         <a href="#resources" class="nav-link">Resources <span class="count">(12)</span></a>
       </div>
@@ -27,7 +27,7 @@
         <p class="nav-heading">Categories</p>
         <a href="#cat-cubes" class="nav-link">Cubes <span class="count">(3)</span></a>
         <a href="#cat-camera-screenshots" class="nav-link">Camera &amp; Screenshots <span class="count">(3)</span></a>
-        <a href="#cat-animation" class="nav-link">Animation <span class="count">(9)</span></a>
+        <a href="#cat-animation" class="nav-link">Animation <span class="count">(10)</span></a>
         <a href="#cat-armature" class="nav-link">Armature <span class="count">(16)</span></a>
         <a href="#cat-elements" class="nav-link">Elements <span class="count">(15)</span></a>
         <a href="#cat-export" class="nav-link">Export <span class="count">(2)</span></a>
@@ -41,11 +41,11 @@
         <a href="#cat-ui-interaction" class="nav-link">UI Interaction <span class="count">(4)</span></a>
         <a href="#cat-uv-mapping" class="nav-link">UV Mapping <span class="count">(4)</span></a>
         <a href="#cat-hytale-integration" class="nav-link">Hytale Integration <span class="count">(12)</span></a>
-        <a href="#cat-silent-io-fork" class="nav-link">Silent IO (fork) <span class="count">(10)</span></a>
+        <a href="#cat-silent-io-fork" class="nav-link">Silent IO (fork) <span class="count">(11)</span></a>
         <a href="#cat-workflow-extras-fork" class="nav-link">Workflow Extras (fork) <span class="count">(15)</span></a>
         <a href="#cat-attachment-points-fork" class="nav-link">Attachment Points (fork) <span class="count">(2)</span></a>
         <a href="#cat-selection-fork" class="nav-link">Selection (fork) <span class="count">(1)</span></a>
-        <a href="#cat-analysis-uv-qa-fork" class="nav-link">Analysis &amp; UV QA (fork) <span class="count">(4)</span></a>
+        <a href="#cat-analysis-uv-qa-fork" class="nav-link">Analysis &amp; UV QA (fork) <span class="count">(5)</span></a>
       </div>
     </nav>
 
@@ -54,7 +54,7 @@
         <h1>Blockbench MCP Plugin</h1>
         <p class="subtitle">API Reference — v1.6.0</p>
         <nav class="stats">
-          <a href="#tools"><strong>151</strong> tools (76 stable, 75 experimental)</a>
+          <a href="#tools"><strong>154</strong> tools (78 stable, 76 experimental)</a>
           <a href="#prompts"><strong>6</strong> prompts</a>
           <a href="#resources"><strong>12</strong> resources</a>
         </nav>
@@ -82,7 +82,7 @@
         </div>
       </div>
       <p class="card-title">Place Cube</p>
-      <p class="card-desc">Places a cube of the given size at the specified position. Texture and group are optional.</p>
+      <p class="card-desc">Places one or more cubes at the given positions. Texture is optional. Parenting: set a per-element `parent` (group/bone) inside each `elements[]` entry to parent cubes to different bones in a single call, or use the top-level `group` as a shared default. Parented cubes keep their authored world position and rotate correctly around the parent bone's origin (no coordinate rebasing needed).</p>
       <div class="overflow-x">
         <table class="param-table">
       <thead>
@@ -107,7 +107,7 @@
       <td class="col-name">group</td>
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
-      <td class="col-desc">TOP-LEVEL parameter (not per-element): a single destination group/bone applied to ALL cubes in this call. Accepts a group UUID or name, or &quot;root&quot; for the top level. There is no per-element parent here — to build a parented hierarchy, either issue one `place_cube` call per target group, or place flat and reparent afterward with `move_to_group` / `group_by_criteria`. An unknown name falls back to root (no error).</td>
+      <td class="col-desc">TOP-LEVEL batch default: a single destination group/bone applied to all cubes that do NOT carry their own `parent`. Accepts a group UUID or name, or &quot;root&quot; for the top level. For a parented hierarchy in one call, set `parent` per element in `elements[]` (it overrides this); this top-level value then acts as the fallback for elements without a `parent`. An unknown name falls back to root (no error).</td>
     </tr><tr>
       <td class="col-name">faces</td>
       <td class="col-type">&quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;up&quot; | &quot;down&quot;[] | unknown | boolean | object[]</td>
@@ -402,7 +402,7 @@
       <td class="col-name">bones</td>
       <td class="col-type">Record&lt;string, object[]&gt;</td>
       <td><span class="param-required">required</span></td>
-      <td class="col-desc">Keyframes for each bone</td>
+      <td class="col-desc">Keyframes per bone, keyed by bone/group name. Each value is an array of { time, position?, rotation?, scale? } samples. Times in seconds.</td>
     </tr><tr>
       <td class="col-name">particle_effects</td>
       <td class="col-type">Record&lt;string, string&gt;</td>
@@ -780,6 +780,55 @@
       <td class="col-type">string[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Bone/group names to sample. Omit to return every animated bone in the animation.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-read_animation_keyframes" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">read_animation_keyframes</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Read Animation Keyframes</p>
+      <p class="card-desc">Read back the RAW stored keyframes (rotation in DEGREES, position, scale) per bone — the authored values, not interpolated samples (use get_bone_transforms_at_time for interpolated). Values round-trip 1:1 with what create_animation / manage_keyframes wrote (after the issue #2 X/Y fix), so this is the tool for automated rotation-regression checks without screenshots. Filter by `bones`, `channels`, exact `time`, or `time_range`. Read-only.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">animation_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Animation UUID or name. If not provided, uses current animation.</td>
+    </tr><tr>
+      <td class="col-name">bones</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Bone/group names to read. Omit to return every animated bone in the animation.</td>
+    </tr><tr>
+      <td class="col-name">channels</td>
+      <td class="col-type">&quot;rotation&quot; | &quot;position&quot; | &quot;scale&quot;[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Channels to include. Omit for all three (rotation, position, scale).</td>
+    </tr><tr>
+      <td class="col-name">time</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">If set, return only keyframes whose time exactly matches (±0.001s).</td>
+    </tr><tr>
+      <td class="col-name">time_range</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">If set as [t0, t1], return only keyframes with t0 ≤ time ≤ t1. <span class="param-meta">[minItems: 2, maxItems: 2]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -5036,6 +5085,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Include animations in the export. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">require_edit_tab</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Guard against Blockbench bug #2224: exporting glTF from the Animate tab bakes the current timeline scrub frame into the armature rest pose, silently corrupting the runtime rig. When true (default) and the active tab is not 'edit', the export auto-switches to the edit tab first and reports `switched_from` in the response. Set false to export from whatever tab is active (only do this if you know the timeline is at the rest frame). <span class="param-meta">(default: <code>true</code>)</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -5126,7 +5180,7 @@
         </div>
       </div>
       <p class="card-title">Switch Mode Tab</p>
-      <p class="card-desc">Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose.</p>
+      <p class="card-desc">Switch the Blockbench mode tab (edit / paint / animate / display). Use this to switch back to 'edit' before exporting glTF, working around Blockbench bug #2224 where exporting from animate-tab bakes the current scrub frame into the rest pose. Idempotent by default: a no-op returning `changed: false` when the tab is already active (pass `force: true` to re-select regardless). Pair with `get_current_tab` to avoid redundant switches in multi-phase builds.</p>
       <div class="overflow-x">
         <table class="param-table">
       <thead>
@@ -5142,6 +5196,11 @@
       <td class="col-type">&quot;edit&quot; | &quot;paint&quot; | &quot;animate&quot; | &quot;display&quot; | &quot;pose&quot;</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Blockbench tab/mode to switch to. Use 'edit' before glTF export to avoid animation pose-baking bugs. 'pose' is only available for formats that opt into pose_mode (e.g. armature-rigged formats).</td>
+    </tr><tr>
+      <td class="col-name">force</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Re-select the tab even if it is already active. By default the switch is idempotent: if the requested tab is already active the call is a no-op and returns `changed: false`, so callers can skip redundant UI churn without tracking tab state themselves. <span class="param-meta">(default: <code>false</code>)</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -5255,6 +5314,20 @@
       <td class="col-desc">Optional plugin id. If omitted, derived from the filename (e.g. 'mcp.js' → 'mcp'). For replacing the MCP plugin itself, pass 'mcp' or omit.</td>
     </tr></tbody>
     </table>
+      </div>
+    </div>
+<div id="tool-get_current_tab" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">get_current_tab</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          
+        </div>
+      </div>
+      <p class="card-title">Get Current Tab</p>
+      <p class="card-desc">Return the currently active Blockbench mode tab (edit / paint / animate / display / pose) as `{ tab }`. Lets automated multi-phase builds read tab state and skip redundant `switch_to_tab` calls (which reload UI state). Lighter than `get_project_state` when you only need the tab.</p>
+      <div class="overflow-x">
+        <p class="empty-params">No parameters</p>
       </div>
     </div>
         </section>
@@ -6057,6 +6130,60 @@
     </table>
       </div>
     </div>
+<div id="tool-validate_rig" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">validate_rig</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Validate Rig</p>
+      <p class="card-desc">Composite rig validation against the LIVE project (no .bbmodel parse): `bone_orphans` (animated bones with zero child elements — runs automatically), `limb_pivot` (nearest cube corner within `limb_anchor_max` of the bone origin), `hand_center` (cube center within `hand_bone_center_max` of the bone origin), and `limb_x_seam` (adjacent cubes in a proximal→distal chain share a Y cross-section at the X seam). Supply `pairs` (bone↔cube) and `chains` (ordered cubes) to drive the geometric checks. Returns `{ passed, issues[] }` with per-issue delta vs threshold. EXPERIMENTAL: thresholds mirror validate_asset.py humanoid rules — tune for your rig. See issue #20.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">checks</td>
+      <td class="col-type">&quot;limb_pivot&quot; | &quot;hand_center&quot; | &quot;limb_x_seam&quot; | &quot;bone_orphans&quot;[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Which checks to run. Omit to run all applicable. `bone_orphans` runs automatically over animated bones; `limb_pivot`/`hand_center` need `pairs`; `limb_x_seam` needs `chains`.</td>
+    </tr><tr>
+      <td class="col-name">pairs</td>
+      <td class="col-type">object[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Bone↔cube bindings to check (e.g. ARM_BONE_CUBE_PAIRS). Drives limb_pivot and hand_center.</td>
+    </tr><tr>
+      <td class="col-name">chains</td>
+      <td class="col-type">object[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Ordered limb cube chains for the limb_x_seam check.</td>
+    </tr><tr>
+      <td class="col-name">limb_anchor_max</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Max distance (BB units) from nearest cube corner to bone origin for limb_pivot. <span class="param-meta">(default: <code>0.5</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">hand_bone_center_max</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Max distance (BB units) from cube center to bone origin for hand_center. <span class="param-meta">(default: <code>1.25</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">seam_tolerance</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Max allowed mismatch (BB units) in shared Y min/max between adjacent chain cubes. <span class="param-meta">(default: <code>0.01</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
         </section>
       </section>
 
@@ -6269,7 +6396,7 @@
       </section>
 
       <footer class="page-footer">
-        Generated 2026-06-08T10:44:57.756Z from Zod schemas
+        Generated 2026-06-08T18:51:47.348Z from Zod schemas
       </footer>
     </main>
   </div>

@@ -288,6 +288,18 @@ export const cubeSchema = z.object({
     .optional()
     .default([0, 0, 0])
     .describe("Rotation of the cube."),
+  parent: z
+    .string()
+    .optional()
+    .describe(
+      "Per-element destination group/bone for THIS cube: a group UUID or " +
+        'name, or "root" for the top level. Overrides `place_cube`\'s ' +
+        "top-level `group` for this element, so a single call can parent " +
+        "different cubes to different bones (e.g. a humanoid body where each " +
+        "box belongs to a different limb). An unknown name falls back to the " +
+        "top-level `group` (or root). The cube keeps its authored world " +
+        "from/to and rotates correctly around the parent bone's origin."
+    ),
 });
 
 /** Mesh element schema */
