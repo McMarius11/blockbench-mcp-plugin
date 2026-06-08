@@ -164,7 +164,19 @@ export const highlightElementsParameters = z.object({
   ids: z
     .array(z.string())
     .min(1)
-    .describe("Element IDs or names to highlight by selecting them in the viewport."),
+    .describe("Element IDs or names to highlight in the viewport."),
+  color: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+    .optional()
+    .describe(
+      "Optional hex color for a temporary colored box overlay drawn around each " +
+        "element (non-destructive — a THREE.Box3Helper, never touches geometry " +
+        "or materials). When set, a `duration_ms` of 0 is treated as a 2000 ms " +
+        "flash, because the overlay must be auto-removed (there is no later MCP " +
+        "handle to clear it). When omitted, elements are highlighted via " +
+        "selection instead."
+    ),
   duration_ms: z
     .number()
     .int()
@@ -173,7 +185,9 @@ export const highlightElementsParameters = z.object({
     .optional()
     .default(0)
     .describe(
-      "If > 0, the previous selection is restored after this many milliseconds (a temporary flash). 0 leaves the highlight selection in place."
+      "If > 0, the highlight is removed and the previous selection restored after " +
+        "this many milliseconds (a temporary flash). 0 leaves the selection " +
+        "highlight in place (or, with `color`, defaults to a 2000 ms flash)."
     ),
   clear_previous: z
     .boolean()
@@ -487,7 +501,7 @@ export const elementToolDocs: ToolSpec[] = [
   {
     name: "highlight_elements",
     description:
-      "Temporarily highlights elements in the viewport by selecting them (non-destructive — geometry is never modified). With `duration_ms > 0` the prior selection is restored afterward for a brief flash; otherwise the highlight selection persists. Useful for visually confirming `find_elements_by_criteria` results.",
+      "Temporarily highlights elements in the viewport — non-destructive (geometry and materials are never modified). Without `color`, highlights via selection. With `color` (hex), also draws a colored box overlay (THREE.Box3Helper) around each element. With `duration_ms > 0` the highlight is removed and the prior selection restored afterward (a flash); a colored overlay without a duration defaults to a 2000 ms flash so it self-cleans. Useful for visually confirming `find_elements_by_criteria` results.",
     annotations: { title: "Highlight Elements", destructiveHint: true },
     parameters: highlightElementsParameters,
     status: STATUS_STABLE,
@@ -1562,7 +1576,7 @@ export function registerElementTools() {
   // highlight_elements
   createTool(elementToolDocs[12].name, {
     ...elementToolDocs[12],
-    async execute({ ids, duration_ms, clear_previous }) {
+    async execute({ ids, color, duration_ms, clear_previous }) {
       const elements = ids.map((id: string) => findElementOrThrow(id)) as Array<
         Cube | Mesh | Group
       >;
@@ -1570,6 +1584,26 @@ export function registerElementTools() {
       const prevCubes = [...Cube.selected];
       const prevMeshes = [...Mesh.selected];
       const prevGroups = Group.all.filter((g: Group) => g.selected);
+
+      const restoreSelection = () => {
+        // @ts-ignore
+        Cube.selected.slice().forEach((c: Cube) => c.unselect?.());
+        // @ts-ignore
+        Mesh.selected.slice().forEach((m: Mesh) => m.unselect?.());
+        Group.all.forEach((g: Group) => {
+          if (g.selected) g.selected = false;
+        });
+        for (const c of prevCubes) {
+          // @ts-ignore
+          c.select?.({ shiftKey: true });
+        }
+        for (const m of prevMeshes) {
+          // @ts-ignore
+          m.select?.({ shiftKey: true });
+        }
+        for (const g of prevGroups) g.selected = true;
+        updateSelection();
+      };
 
       if (clear_previous) {
         // @ts-ignore - unselect available on element classes
@@ -1590,35 +1624,51 @@ export function registerElementTools() {
         el.select?.({ shiftKey: true });
       }
       updateSelection();
+
+      // Optional colored box overlay — non-destructive THREE helpers added to
+      // the canvas scene, removed on cleanup. Never mutates geometry/materials.
+      const overlays: Array<{ geometry?: { dispose?: () => void } }> = [];
+      if (color) {
+        // @ts-ignore - THREE is a Blockbench runtime global
+        const col = new THREE.Color(color);
+        for (const el of elements) {
+          const mesh = (el as { mesh?: { updateMatrixWorld?: (f?: boolean) => void } }).mesh;
+          if (!mesh) continue;
+          mesh.updateMatrixWorld?.(true);
+          // @ts-ignore
+          const box = new THREE.Box3().setFromObject(mesh);
+          if (box.isEmpty()) continue;
+          // @ts-ignore
+          const helper = new THREE.Box3Helper(box, col);
+          // @ts-ignore - Canvas.scene is the world scene (=== global `scene`)
+          Canvas.scene.add(helper);
+          overlays.push(helper);
+        }
+      }
       Canvas.updateAll();
 
-      if (duration_ms > 0) {
-        await new Promise((resolve) => setTimeout(resolve, duration_ms));
-        // Restore the prior selection.
-        // @ts-ignore
-        Cube.selected.slice().forEach((c: Cube) => c.unselect?.());
-        // @ts-ignore
-        Mesh.selected.slice().forEach((m: Mesh) => m.unselect?.());
-        Group.all.forEach((g: Group) => {
-          if (g.selected) g.selected = false;
-        });
-        for (const c of prevCubes) {
+      // Colored overlays have no later MCP handle, so they must self-clean —
+      // force a flash duration when one was requested without a timeout.
+      const effectiveDuration =
+        color && overlays.length && duration_ms === 0 ? 2000 : duration_ms;
+
+      if (effectiveDuration > 0) {
+        await new Promise((resolve) => setTimeout(resolve, effectiveDuration));
+        for (const helper of overlays) {
           // @ts-ignore
-          c.select?.({ shiftKey: true });
+          Canvas.scene.remove(helper);
+          helper.geometry?.dispose?.();
         }
-        for (const m of prevMeshes) {
-          // @ts-ignore
-          m.select?.({ shiftKey: true });
-        }
-        for (const g of prevGroups) g.selected = true;
-        updateSelection();
+        restoreSelection();
         Canvas.updateAll();
       }
 
       return JSON.stringify(
         {
           highlighted: elements.map((el) => ({ uuid: el.uuid, name: el.name })),
-          restored: duration_ms > 0,
+          color: color ?? null,
+          overlays: overlays.length,
+          restored: effectiveDuration > 0,
         },
         null,
         2

@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-06-08T10:13:47.444Z",
+  "generatedAt": "2026-06-08T10:44:57.756Z",
   "tools": [
     {
       "name": "place_cube",
@@ -2927,7 +2927,7 @@
     {
       "name": "highlight_elements",
       "title": "Highlight Elements",
-      "description": "Temporarily highlights elements in the viewport by selecting them (non-destructive — geometry is never modified). With `duration_ms > 0` the prior selection is restored afterward for a brief flash; otherwise the highlight selection persists. Useful for visually confirming `find_elements_by_criteria` results.",
+      "description": "Temporarily highlights elements in the viewport — non-destructive (geometry and materials are never modified). Without `color`, highlights via selection. With `color` (hex), also draws a colored box overlay (THREE.Box3Helper) around each element. With `duration_ms > 0` the highlight is removed and the prior selection restored afterward (a flash); a colored overlay without a duration defaults to a 2000 ms flash so it self-cleans. Useful for visually confirming `find_elements_by_criteria` results.",
       "status": "stable",
       "category": "Elements",
       "annotations": {
@@ -2945,16 +2945,22 @@
                   "type": "string"
                 },
                 "minItems": 1,
-                "description": "Element IDs or names to highlight by selecting them in the viewport.",
-                "markdownDescription": "Element IDs or names to highlight by selecting them in the viewport."
+                "description": "Element IDs or names to highlight in the viewport.",
+                "markdownDescription": "Element IDs or names to highlight in the viewport."
+              },
+              "color": {
+                "type": "string",
+                "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+                "description": "Optional hex color for a temporary colored box overlay drawn around each element (non-destructive — a THREE.Box3Helper, never touches geometry or materials). When set, a `duration_ms` of 0 is treated as a 2000 ms flash, because the overlay must be auto-removed (there is no later MCP handle to clear it). When omitted, elements are highlighted via selection instead.",
+                "markdownDescription": "Optional hex color for a temporary colored box overlay drawn around each element (non-destructive — a THREE.Box3Helper, never touches geometry or materials). When set, a `duration_ms` of 0 is treated as a 2000 ms flash, because the overlay must be auto-removed (there is no later MCP handle to clear it). When omitted, elements are highlighted via selection instead."
               },
               "duration_ms": {
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 10000,
                 "default": 0,
-                "description": "If > 0, the previous selection is restored after this many milliseconds (a temporary flash). 0 leaves the highlight selection in place.",
-                "markdownDescription": "If > 0, the previous selection is restored after this many milliseconds (a temporary flash). 0 leaves the highlight selection in place."
+                "description": "If > 0, the highlight is removed and the previous selection restored after this many milliseconds (a temporary flash). 0 leaves the selection highlight in place (or, with `color`, defaults to a 2000 ms flash).",
+                "markdownDescription": "If > 0, the highlight is removed and the previous selection restored after this many milliseconds (a temporary flash). 0 leaves the selection highlight in place (or, with `color`, defaults to a 2000 ms flash)."
               },
               "clear_previous": {
                 "type": "boolean",

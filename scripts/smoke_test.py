@@ -1001,9 +1001,22 @@ class TestRunner:
             and json.loads(t)["matches"][0]["name"] == "recv_a",
         )
 
-        # highlight_elements (non-destructive selection)
+        # highlight_elements — selection highlight (non-destructive)
         ok, text = self.c.call("highlight_elements", {"ids": ["recv_a"], "duration_ms": 0})
-        self.expect_ok("highlight_elements", ok, text)
+        self.expect_ok("highlight_elements (selection)", ok, text,
+                       also_check=lambda t: json.loads(t)["overlays"] == 0)
+        # highlight_elements — colored box overlay, auto-cleans, no scene leak
+        ok, text = self.c.call("highlight_elements",
+                               {"ids": ["recv_a", "recv_b"], "color": "#ff00ff", "duration_ms": 300})
+        self.expect_ok(
+            "highlight_elements (colored overlay)", ok, text,
+            also_check=lambda t: json.loads(t)["overlays"] == 2 and json.loads(t)["restored"],
+        )
+        ok, text = self.c.call("risky_eval",
+                               {"code": "Canvas.scene.children.filter("
+                                        "o=>o.constructor.name==='Box3Helper').length"})
+        self.expect_ok("highlight_elements overlay cleaned up (no leak)", ok, text,
+                       also_check=lambda t: t.strip() == "0")
 
         # UV analysis
         ok, text = self.c.call("find_uv_overlaps", {"scope": "all"})
