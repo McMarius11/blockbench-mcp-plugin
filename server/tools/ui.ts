@@ -32,12 +32,14 @@ export const triggerActionParametersSchema = z.object({
 export const riskyEvalParametersSchema = z.object({
   code: z
     .string()
-    .refine((val) => !/console\.|\/\/|\/\*/.test(val), {
-      message:
-        "Code must not include 'console.', '//' or '/* */' comments.",
+    .refine((val) => !/\bconsole\s*\./.test(val), {
+      message: "Code must not call `console.*` — its output is not captured.",
     })
     .describe(
-      "JavaScript code to evaluate. Do not pass `console` commands or comments."
+      "JavaScript code to evaluate; the value of the last expression is " +
+        "returned. Comments (`//` and `/* */`) ARE allowed (issue #4) — only " +
+        "`console.*` calls are rejected, since their output is not captured. " +
+        "Return a value instead of logging."
     ),
 });
 

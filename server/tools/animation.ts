@@ -301,7 +301,15 @@ export const manageAnimationsParameters = z
 export const animationToolDocs: ToolSpec[] = [
   {
     name: "create_animation",
-    description: "Creates a new animation with keyframes for bones.",
+    description:
+      "Creates a new animation with keyframes for bones. Rotation values are " +
+      "in DEGREES, XYZ Euler order, in the bone's LOCAL space — the same " +
+      "visual values Blockbench shows in the bone rotation fields. They " +
+      "round-trip 1:1: pass the pose you want to see (e.g. [0,45,0] = 45° " +
+      "around Y) and no axis inversion is applied (the Bedrock-format X/Y " +
+      "negation is handled internally; see issue #2). Position is in the same " +
+      "local space, units = Blockbench units. `scale` accepts a single number " +
+      "(uniform) or [x,y,z]. `manage_keyframes` uses the identical convention.",
     annotations: {
       title: "Create Animation",
       destructiveHint: true,
@@ -407,7 +415,16 @@ createTool(
                 (acc.position ??= {})[timeKey] = keyframe.position;
               }
               if (keyframe.rotation) {
-                (acc.rotation ??= {})[timeKey] = keyframe.rotation;
+                // `create_animation` writes a Bedrock-format animation (format
+                // 1.8.0) and hands it to `Animator.loadFile`. Blockbench's
+                // Bedrock parser negates the X and Y rotation components on
+                // import (left-handed convention), so a raw pass-through stored
+                // poses mirrored on X/Y while Z stayed correct (issue #2).
+                // Pre-negate X/Y here so the caller passes plain visual-euler
+                // degrees and they round-trip 1:1 — matching `manage_keyframes`,
+                // which uses the native `createKeyframe` API with no inversion.
+                const [rx, ry, rz] = keyframe.rotation;
+                (acc.rotation ??= {})[timeKey] = [-rx, -ry, rz];
               }
               if (keyframe.scale) {
                 (acc.scale ??= {})[timeKey] = keyframe.scale;
