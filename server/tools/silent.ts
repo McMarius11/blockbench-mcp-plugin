@@ -599,21 +599,25 @@ export function registerSilentTools() {
           );
         }
 
-        // Create a fresh project slot for this format. This sets Project to a
-        // new ModelProject; the codec.load() below populates it from `model`.
-        // @ts-ignore - newProject is a Blockbench global
-        newProject(format);
-
-        // @ts-ignore - format.codec is the format-specific load handler
-        const codec = format.codec || Codecs.project;
-        if (typeof codec.load !== "function") {
-          throw new Error(
-            `Codec for format "${formatId}" exposes no load() method.`
-          );
+        // A .bbmodel is always loaded by the PROJECT codec, which runs its own
+        // `setupProject(Formats[model.meta.model_format])` — i.e. it creates
+        // the project tab itself. Two earlier mistakes here opened a redundant
+        // SECOND tab on every call:
+        //   1. Calling `newProject(format)` first created an empty orphan tab;
+        //      `Codecs.project.load` then created the real one. (Its signature
+        //      is `load(model, file)` — only two args; the old third argument
+        //      `{import_to_current_project:false}` was silently ignored.)
+        //   2. Using `format.codec` is wrong for .bbmodel: for bedrock/geo
+        //      formats that's the geometry (geo.json) codec, not the .bbmodel
+        //      loader. The project codec is correct for every .bbmodel.
+        // @ts-ignore - Codecs is a Blockbench global
+        const codec = Codecs.project;
+        if (!codec || typeof codec.load !== "function") {
+          throw new Error("Blockbench project codec not available.");
         }
 
-        // Synthesize a FileResult-like object — Blockbench's load() typically
-        // reads .path / .name from this for save-back resolution.
+        // Synthesize a FileResult-like object — Blockbench's load() reads
+        // .path / .name from this for save-back resolution.
         const file = {
           path,
           name: path.split(/[\/\\]/).pop() ?? "loaded.bbmodel",
@@ -621,7 +625,7 @@ export function registerSilentTools() {
         };
 
         // @ts-ignore
-        codec.load(model, file, { import_to_current_project: false });
+        codec.load(model, file);
 
         // @ts-ignore - Project is a Blockbench global
         if (Project) {
