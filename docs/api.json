@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "generatedAt": "2026-06-08T18:51:47.348Z",
+  "generatedAt": "2026-06-09T21:16:20.947Z",
   "tools": [
     {
       "name": "place_cube",
@@ -551,6 +551,173 @@
             "required": [
               "position",
               "projection"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "capture_ortho_set",
+      "title": "Capture Ortho Set",
+      "description": "Render a labeled set of orthographic/iso views of the model to PNG files in ONE call — the multi-angle QA sheet without N separate set_camera_angle + capture_screenshot round-trips (each of which is a failure point, and set_camera_angle resets zoom). Zoom is held constant across all views internally. Writes `<view>.png` per requested view and returns `{ paths, count }`. The live camera is restored afterwards.",
+      "status": "experimental",
+      "category": "Camera & Screenshots",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/capture_ortho_set",
+        "definitions": {
+          "capture_ortho_set": {
+            "type": "object",
+            "properties": {
+              "out_dir": {
+                "type": "string",
+                "description": "Absolute directory to write the labeled PNGs into (created if missing).",
+                "markdownDescription": "Absolute directory to write the labeled PNGs into (created if missing)."
+              },
+              "views": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "front",
+                    "back",
+                    "left",
+                    "right",
+                    "top",
+                    "bottom",
+                    "north",
+                    "south",
+                    "east",
+                    "west",
+                    "3q_front",
+                    "3q_rear",
+                    "isometric_right",
+                    "isometric_left"
+                  ]
+                },
+                "description": "Views to capture, each written as `<view>.png`. Defaults to the full 8-view set (front/back/left/right/top/bottom/3q_front/3q_rear). Accepts compass aliases (north/south/east/west) too.",
+                "markdownDescription": "Views to capture, each written as `<view>.png`. Defaults to the full 8-view set (front/back/left/right/top/bottom/3q_front/3q_rear). Accepts compass aliases (north/south/east/west) too."
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 8192,
+                "default": 512,
+                "description": "Square pixel size of each rendered view.",
+                "markdownDescription": "Square pixel size of each rendered view."
+              },
+              "zoom": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Explicit camera zoom held constant across every view (e.g. 0.18 for a humanoid full-body). When omitted, the current zoom is preserved — it is NOT reset per view.",
+                "markdownDescription": "Explicit camera zoom held constant across every view (e.g. 0.18 for a humanoid full-body). When omitted, the current zoom is preserved — it is NOT reset per view."
+              },
+              "target": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Camera look-at point shared by all views (defaults to each preset's target).",
+                "markdownDescription": "Camera look-at point shared by all views (defaults to each preset's target)."
+              },
+              "background": {
+                "type": "string",
+                "description": "\"transparent\" or a hex color like \"#000000\". Defaults to the viewport background.",
+                "markdownDescription": "\"transparent\" or a hex color like \"#000000\". Defaults to the viewport background."
+              }
+            },
+            "required": [
+              "out_dir"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "export_silhouette_mask",
+      "title": "Export Silhouette Mask",
+      "description": "Render the model from one view as a pure black/white silhouette mask (foreground = white, background = black) and write it to a PNG — ready for a direct IoU comparison against a reference silhouette without any manual offline render+diff. Uses a transparent-background render and thresholds on alpha. Returns `{ path, view, size, foreground, coverage }`.",
+      "status": "experimental",
+      "category": "Camera & Screenshots",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/export_silhouette_mask",
+        "definitions": {
+          "export_silhouette_mask": {
+            "type": "object",
+            "properties": {
+              "out_path": {
+                "type": "string",
+                "description": "Absolute path to write the silhouette mask PNG to.",
+                "markdownDescription": "Absolute path to write the silhouette mask PNG to."
+              },
+              "view": {
+                "type": "string",
+                "enum": [
+                  "front",
+                  "back",
+                  "left",
+                  "right",
+                  "top",
+                  "bottom",
+                  "north",
+                  "south",
+                  "east",
+                  "west",
+                  "3q_front",
+                  "3q_rear",
+                  "isometric_right",
+                  "isometric_left"
+                ],
+                "default": "front",
+                "description": "View to render the silhouette from. Defaults to front.",
+                "markdownDescription": "View to render the silhouette from. Defaults to front."
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 4096,
+                "default": 512,
+                "description": "Square pixel size of the mask.",
+                "markdownDescription": "Square pixel size of the mask."
+              },
+              "zoom": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Explicit camera zoom (preserves current zoom when omitted).",
+                "markdownDescription": "Explicit camera zoom (preserves current zoom when omitted)."
+              },
+              "target": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Camera look-at point.",
+                "markdownDescription": "Camera look-at point."
+              },
+              "threshold": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 255,
+                "default": 8,
+                "description": "Alpha cutoff (0–255) above which a pixel counts as foreground.",
+                "markdownDescription": "Alpha cutoff (0–255) above which a pixel counts as foreground."
+              }
+            },
+            "required": [
+              "out_path"
             ],
             "additionalProperties": false
           }
@@ -1601,6 +1768,102 @@
                 "markdownDescription": "If set as [t0, t1], return only keyframes with t0 ≤ time ≤ t1."
               }
             },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "capture_anim_contact_sheet",
+      "title": "Capture Animation Contact Sheet",
+      "description": "Render an animation as a single contact-sheet PNG — one row per view, one column per evenly-spaced frame — in ONE call, instead of many animation_timeline + capture_screenshot round-trips (the exact path that silently fails mid-sweep). Scrubs the timeline, applies each camera view with a constant zoom, composites the grid off-screen, and writes it. Restores the timeline cursor and camera afterwards. Returns `{ animation, frames, views, contact_sheet, cells }`.",
+      "status": "experimental",
+      "category": "Animation",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/capture_anim_contact_sheet",
+        "definitions": {
+          "capture_anim_contact_sheet": {
+            "type": "object",
+            "properties": {
+              "out_path": {
+                "type": "string",
+                "description": "Absolute path to write the combined contact-sheet PNG to.",
+                "markdownDescription": "Absolute path to write the combined contact-sheet PNG to."
+              },
+              "animation": {
+                "type": "string",
+                "description": "Animation name or UUID to sample. Defaults to the currently selected animation.",
+                "markdownDescription": "Animation name or UUID to sample. Defaults to the currently selected animation."
+              },
+              "frames": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 64,
+                "default": 8,
+                "description": "Number of evenly-spaced frames sampled across the animation length.",
+                "markdownDescription": "Number of evenly-spaced frames sampled across the animation length."
+              },
+              "views": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "front",
+                    "back",
+                    "left",
+                    "right",
+                    "top",
+                    "bottom",
+                    "north",
+                    "south",
+                    "east",
+                    "west",
+                    "3q_front",
+                    "3q_rear",
+                    "isometric_right",
+                    "isometric_left"
+                  ]
+                },
+                "description": "One row per view. Defaults to [right, front, left, 3q_front]. Accepts compass aliases.",
+                "markdownDescription": "One row per view. Defaults to [right, front, left, 3q_front]. Accepts compass aliases."
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 2048,
+                "default": 256,
+                "description": "Square pixel size of each cell (frame) in the sheet.",
+                "markdownDescription": "Square pixel size of each cell (frame) in the sheet."
+              },
+              "zoom": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Explicit camera zoom held constant across all cells (preserves current zoom when omitted).",
+                "markdownDescription": "Explicit camera zoom held constant across all cells (preserves current zoom when omitted)."
+              },
+              "target": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Camera look-at point shared by every cell.",
+                "markdownDescription": "Camera look-at point shared by every cell."
+              },
+              "background": {
+                "type": "string",
+                "description": "Cell background: \"transparent\" or a hex color like \"#000000\".",
+                "markdownDescription": "Cell background: \"transparent\" or a hex color like \"#000000\"."
+              }
+            },
+            "required": [
+              "out_path"
+            ],
             "additionalProperties": false
           }
         },
@@ -7504,6 +7767,34 @@
       }
     },
     {
+      "name": "reload_project",
+      "title": "Reload Project In-Place",
+      "description": "Reload the current project (or a given `path`) from its saved .bbmodel IN-PLACE — the live session is replaced with the on-disk state and the stale tab is closed, so the net tab count stays the same (unlike `open_project_file`, which always adds a tab). This is the fix for the direct-write footgun: when a script writes changes straight into the .bbmodel file (e.g. an external format upgrade), the running Blockbench session stays stale and export/animation sweeps see the OLD data (often 0 animations). Call this after any out-of-band file write to resync. WARNING: discards unsaved in-session changes — that is the point of a reload. Returns `{ reloaded, name, animations, path }`.",
+      "status": "stable",
+      "category": "Silent IO (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/reload_project",
+        "definitions": {
+          "reload_project": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Absolute path to the .bbmodel to reload from. When omitted, reloads the CURRENT project from its own `save_path` (the file it was last saved to / opened from).",
+                "markdownDescription": "Absolute path to the .bbmodel to reload from. When omitted, reloads the CURRENT project from its own `save_path` (the file it was last saved to / opened from)."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
       "name": "mirror_elements",
       "title": "Mirror Elements",
       "description": "Mirror elements across an axis. Saves token + ensures geometric symmetry for paired weapon/character parts. With duplicate=true, creates a mirrored copy; with duplicate=false, flips in-place.",
@@ -8172,6 +8463,250 @@
             "required": [
               "mesh_id",
               "texture"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "place_section",
+      "title": "Place Section",
+      "description": "Build a whole Forge-style 'section' — one named group containing cubes and/or meshes, all sharing one texture — in a SINGLE call, instead of separate add_group + place_cube + place_mesh + bind round-trips. The group is created if missing (optionally nested under `parent`) or reused if it already exists. Texture is resolved once and applied to every element; a bad texture name throws rather than producing a silent untextured build. Returns `{ group, group_uuid, cubes_added, meshes_added }`.",
+      "status": "experimental",
+      "category": "Workflow Extras (fork)",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false
+      },
+      "parameters": {
+        "$ref": "#/definitions/place_section",
+        "definitions": {
+          "place_section": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string",
+                "description": "Name of the section's destination group/bone. Reused if a group with this name already exists, otherwise created.",
+                "markdownDescription": "Name of the section's destination group/bone. Reused if a group with this name already exists, otherwise created."
+              },
+              "parent": {
+                "type": "string",
+                "description": "Optional parent group/bone (name or UUID, or \"root\") to nest the section group under when it has to be created. Ignored if the group already exists.",
+                "markdownDescription": "Optional parent group/bone (name or UUID, or \"root\") to nest the section group under when it has to be created. Ignored if the group already exists."
+              },
+              "texture": {
+                "type": "string",
+                "description": "Texture id/name applied to every cube and mesh in this section. Falls back to the project's default texture when omitted; throws if a name is given but not found (no silent 0-texture build).",
+                "markdownDescription": "Texture id/name applied to every cube and mesh in this section. Falls back to the project's default texture when omitted; throws if a name is given but not found (no silent 0-texture build)."
+              },
+              "cubes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "Pivot point of the cube.",
+                      "markdownDescription": "Pivot point of the cube.",
+                      "default": [
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "from": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "Starting point of the cube.",
+                      "markdownDescription": "Starting point of the cube.",
+                      "default": [
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "to": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "Ending point of the cube.",
+                      "markdownDescription": "Ending point of the cube.",
+                      "default": [
+                        1,
+                        1,
+                        1
+                      ]
+                    },
+                    "rotation": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "Rotation of the cube.",
+                      "markdownDescription": "Rotation of the cube.",
+                      "default": [
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "parent": {
+                      "type": "string",
+                      "description": "Per-element destination group/bone for THIS cube: a group UUID or name, or \"root\" for the top level. Overrides `place_cube`'s top-level `group` for this element, so a single call can parent different cubes to different bones (e.g. a humanoid body where each box belongs to a different limb). An unknown name falls back to the top-level `group` (or root). The cube keeps its authored world from/to and rotates correctly around the parent bone's origin.",
+                      "markdownDescription": "Per-element destination group/bone for THIS cube: a group UUID or name, or \"root\" for the top level. Overrides `place_cube`'s top-level `group` for this element, so a single call can parent different cubes to different bones (e.g. a humanoid body where each box belongs to a different limb). An unknown name falls back to the top-level `group` (or root). The cube keeps its authored world from/to and rotates correctly around the parent bone's origin."
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": [],
+                "description": "Cubes to create inside the section group.",
+                "markdownDescription": "Cubes to create inside the section group."
+              },
+              "meshes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "Position of the mesh.",
+                      "markdownDescription": "Position of the mesh.",
+                      "default": [
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "rotation": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "Rotation of the mesh.",
+                      "markdownDescription": "Rotation of the mesh.",
+                      "default": [
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    "scale": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "Scale of the mesh.",
+                      "markdownDescription": "Scale of the mesh.",
+                      "default": [
+                        1,
+                        1,
+                        1
+                      ]
+                    },
+                    "vertices": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "Vertex coordinates in the mesh.",
+                        "markdownDescription": "Vertex coordinates in the mesh."
+                      },
+                      "default": [],
+                      "description": "Vertices of the mesh.",
+                      "markdownDescription": "Vertices of the mesh."
+                    },
+                    "faces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "vertices": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "minItems": 3,
+                            "maxItems": 4,
+                            "description": "0-based indices into the `vertices` array. 3 entries = triangle, 4 = quad.",
+                            "markdownDescription": "0-based indices into the `vertices` array. 3 entries = triangle, 4 = quad."
+                          },
+                          "uv": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2,
+                              "description": "2D vector [x, y].",
+                              "markdownDescription": "2D vector [x, y]."
+                            },
+                            "description": "Per-vertex UVs for this face: { \"<vertex_index>\": [u, v] } in project pixel space. Missing entries default to [0, 0].",
+                            "markdownDescription": "Per-vertex UVs for this face: { \"<vertex_index>\": [u, v] } in project pixel space. Missing entries default to [0, 0]."
+                          }
+                        },
+                        "required": [
+                          "vertices"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "default": [],
+                      "description": "Faces of the mesh. Each face references 3-4 vertices by their index in `vertices`. Without this, the mesh has only loose vertices (no surface).",
+                      "markdownDescription": "Faces of the mesh. Each face references 3-4 vertices by their index in `vertices`. Without this, the mesh has only loose vertices (no surface)."
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": [],
+                "description": "Meshes to create inside the section group.",
+                "markdownDescription": "Meshes to create inside the section group."
+              }
+            },
+            "required": [
+              "group"
             ],
             "additionalProperties": false
           }

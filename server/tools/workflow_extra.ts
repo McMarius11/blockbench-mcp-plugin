@@ -3,6 +3,8 @@
 import { z } from "zod";
 import { createTool, type ToolSpec } from "@/lib/factories";
 import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
+import { cubeSchema, meshSchema } from "@/lib/zodObjects";
+import { getProjectTexture } from "@/lib/util";
 
 // ============================================================================
 // Workflow extras — additional Blockbench actions previously only reachable
@@ -33,6 +35,45 @@ function findElement(id: string): any {
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
+
+export const placeSectionParameters = z
+  .object({
+    group: z
+      .string()
+      .describe(
+        "Name of the section's destination group/bone. Reused if a group with " +
+          "this name already exists, otherwise created."
+      ),
+    parent: z
+      .string()
+      .optional()
+      .describe(
+        'Optional parent group/bone (name or UUID, or "root") to nest the ' +
+          "section group under when it has to be created. Ignored if the group " +
+          "already exists."
+      ),
+    texture: z
+      .string()
+      .optional()
+      .describe(
+        "Texture id/name applied to every cube and mesh in this section. " +
+          "Falls back to the project's default texture when omitted; throws if " +
+          "a name is given but not found (no silent 0-texture build)."
+      ),
+    cubes: z
+      .array(cubeSchema)
+      .optional()
+      .default([])
+      .describe("Cubes to create inside the section group."),
+    meshes: z
+      .array(meshSchema)
+      .optional()
+      .default([])
+      .describe("Meshes to create inside the section group."),
+  })
+  .refine((v) => v.cubes.length > 0 || v.meshes.length > 0, {
+    message: "A section needs at least one cube or mesh.",
+  });
 
 export const mirrorElementsParameters = z.object({
   axis: z
@@ -352,6 +393,25 @@ export const workflowExtraToolDocs: ToolSpec[] = [
     annotations: { title: "Bind Mesh Face Textures", destructiveHint: true, openWorldHint: false },
     parameters: bindMeshFaceTexturesParameters,
     status: STATUS_STABLE,
+  },
+  {
+    name: "place_section",
+    description:
+      "Build a whole Forge-style 'section' — one named group containing cubes " +
+      "and/or meshes, all sharing one texture — in a SINGLE call, instead of " +
+      "separate add_group + place_cube + place_mesh + bind round-trips. The " +
+      "group is created if missing (optionally nested under `parent`) or " +
+      "reused if it already exists. Texture is resolved once and applied to " +
+      "every element; a bad texture name throws rather than producing a silent " +
+      "untextured build. Returns `{ group, group_uuid, cubes_added, " +
+      "meshes_added }`.",
+    annotations: {
+      title: "Place Section",
+      destructiveHint: true,
+      openWorldHint: false,
+    },
+    parameters: placeSectionParameters,
+    status: STATUS_EXPERIMENTAL,
   },
 ];
 
@@ -753,4 +813,100 @@ export function registerWorkflowExtraTools() {
       return `Bound texture "${tex.name}" to ${bound} face(s) on mesh "${mesh.name}".`;
     },
   }, workflowExtraToolDocs[14].status);
+
+  // ---- place_section ----
+  createTool(workflowExtraToolDocs[15].name, {
+    ...workflowExtraToolDocs[15],
+    async execute({ group, parent, texture, cubes, meshes }: any) {
+      ensureProject();
+
+      // Resolve the shared texture once. An explicit-but-missing name is an
+      // error (the whole point of this tool over loose round-trips is to fail
+      // loudly instead of building an untextured section).
+      // @ts-ignore - Texture is a Blockbench global
+      const projectTexture = texture
+        ? getProjectTexture(texture)
+        : Texture.getDefault();
+      if (texture && !projectTexture) {
+        throw new Error(`No texture found for "${texture}".`);
+      }
+
+      // @ts-ignore - getAllGroups is a Blockbench global utility
+      const allGroups = getAllGroups();
+      const resolve = (ref?: string): any =>
+        !ref || ref === "root"
+          ? "root"
+          : allGroups.find((g: any) => g.name === ref || g.uuid === ref) ?? "root";
+
+      Undo.initEdit({ elements: [], outliner: true, collections: [] });
+
+      // Reuse an existing same-named group, else create it under `parent`.
+      // @ts-ignore
+      let sectionGroup: any = allGroups.find((g: any) => g.name === group);
+      if (!sectionGroup) {
+        // @ts-ignore - Group is a Blockbench global
+        sectionGroup = new Group({ name: group }).init();
+        sectionGroup.addTo(resolve(parent));
+      }
+
+      const createdCubes: any[] = (cubes ?? []).map((el: any) => {
+        // @ts-ignore - Cube is a Blockbench global
+        const cube = new Cube({
+          autouv: 1,
+          name: el.name,
+          from: el.from,
+          to: el.to,
+          origin: el.origin,
+          rotation: el.rotation,
+        }).init();
+        cube.addTo(sectionGroup);
+        if (projectTexture) {
+          cube.applyTexture(projectTexture, true);
+          cube.mapAutoUV();
+        }
+        return cube;
+      });
+
+      const createdMeshes: any[] = (meshes ?? []).map((el: any) => {
+        // @ts-ignore - Mesh is a Blockbench global
+        const mesh = new Mesh({ name: el.name, vertices: {} }).init();
+        const vkeys: string[] = [];
+        (el.vertices ?? []).forEach((v: number[]) => {
+          const r = mesh.addVertices(v as ArrayVector3);
+          vkeys.push(Array.isArray(r) ? r[0] : r);
+        });
+        for (const spec of el.faces ?? []) {
+          const verts = (spec.vertices as number[]).map((i: number) => vkeys[i]);
+          if (verts.some((k: string) => !k)) {
+            throw new Error(
+              `Face on mesh "${el.name}" references an out-of-range vertex index.`
+            );
+          }
+          const faceUv: Record<string, [number, number]> = {};
+          if (spec.uv && typeof spec.uv === "object") {
+            for (const [idx, uv] of Object.entries(spec.uv)) {
+              const vk = vkeys[Number(idx)];
+              if (vk) faceUv[vk] = uv as [number, number];
+            }
+          }
+          // @ts-ignore - MeshFace is a Blockbench global
+          mesh.addFaces(new MeshFace(mesh, { vertices: verts, uv: faceUv }));
+        }
+        mesh.addTo(sectionGroup);
+        if (projectTexture) mesh.applyTexture(projectTexture);
+        return mesh;
+      });
+
+      Undo.finishEdit("Agent placed section");
+      // @ts-ignore - Canvas is a Blockbench global
+      Canvas.updateAll();
+
+      return JSON.stringify({
+        group: sectionGroup.name,
+        group_uuid: sectionGroup.uuid,
+        cubes_added: createdCubes.length,
+        meshes_added: createdMeshes.length,
+      });
+    },
+  }, workflowExtraToolDocs[15].status);
 }

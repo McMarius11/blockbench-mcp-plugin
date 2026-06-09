@@ -18,7 +18,7 @@
 
       <div class="nav-group">
         <p class="nav-heading">Overview</p>
-        <a href="#tools" class="nav-link">Tools <span class="count">(154)</span></a>
+        <a href="#tools" class="nav-link">Tools <span class="count">(159)</span></a>
         <a href="#prompts" class="nav-link">Prompts <span class="count">(6)</span></a>
         <a href="#resources" class="nav-link">Resources <span class="count">(12)</span></a>
       </div>
@@ -26,8 +26,8 @@
       <div class="nav-group">
         <p class="nav-heading">Categories</p>
         <a href="#cat-cubes" class="nav-link">Cubes <span class="count">(3)</span></a>
-        <a href="#cat-camera-screenshots" class="nav-link">Camera &amp; Screenshots <span class="count">(3)</span></a>
-        <a href="#cat-animation" class="nav-link">Animation <span class="count">(10)</span></a>
+        <a href="#cat-camera-screenshots" class="nav-link">Camera &amp; Screenshots <span class="count">(5)</span></a>
+        <a href="#cat-animation" class="nav-link">Animation <span class="count">(11)</span></a>
         <a href="#cat-armature" class="nav-link">Armature <span class="count">(16)</span></a>
         <a href="#cat-elements" class="nav-link">Elements <span class="count">(15)</span></a>
         <a href="#cat-export" class="nav-link">Export <span class="count">(2)</span></a>
@@ -41,8 +41,8 @@
         <a href="#cat-ui-interaction" class="nav-link">UI Interaction <span class="count">(4)</span></a>
         <a href="#cat-uv-mapping" class="nav-link">UV Mapping <span class="count">(4)</span></a>
         <a href="#cat-hytale-integration" class="nav-link">Hytale Integration <span class="count">(12)</span></a>
-        <a href="#cat-silent-io-fork" class="nav-link">Silent IO (fork) <span class="count">(11)</span></a>
-        <a href="#cat-workflow-extras-fork" class="nav-link">Workflow Extras (fork) <span class="count">(15)</span></a>
+        <a href="#cat-silent-io-fork" class="nav-link">Silent IO (fork) <span class="count">(12)</span></a>
+        <a href="#cat-workflow-extras-fork" class="nav-link">Workflow Extras (fork) <span class="count">(16)</span></a>
         <a href="#cat-attachment-points-fork" class="nav-link">Attachment Points (fork) <span class="count">(2)</span></a>
         <a href="#cat-selection-fork" class="nav-link">Selection (fork) <span class="count">(1)</span></a>
         <a href="#cat-analysis-uv-qa-fork" class="nav-link">Analysis &amp; UV QA (fork) <span class="count">(5)</span></a>
@@ -54,7 +54,7 @@
         <h1>Blockbench MCP Plugin</h1>
         <p class="subtitle">API Reference — v1.6.0</p>
         <nav class="stats">
-          <a href="#tools"><strong>154</strong> tools (78 stable, 76 experimental)</a>
+          <a href="#tools"><strong>159</strong> tools (79 stable, 80 experimental)</a>
           <a href="#prompts"><strong>6</strong> prompts</a>
           <a href="#resources"><strong>12</strong> resources</a>
         </nav>
@@ -356,6 +356,114 @@
       <td class="col-type">number</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Camera zoom factor (&gt;1 zooms in, &lt;1 zooms out). When omitted, the current zoom is PRESERVED across the angle change — previously every call silently reset zoom to default (issue #3). Pass an explicit value for reproducible framing (e.g. 0.18 for humanoid full-body).</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-capture_ortho_set" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">capture_ortho_set</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Capture Ortho Set</p>
+      <p class="card-desc">Render a labeled set of orthographic/iso views of the model to PNG files in ONE call — the multi-angle QA sheet without N separate set_camera_angle + capture_screenshot round-trips (each of which is a failure point, and set_camera_angle resets zoom). Zoom is held constant across all views internally. Writes `&lt;view&gt;.png` per requested view and returns `{ paths, count }`. The live camera is restored afterwards.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">out_dir</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute directory to write the labeled PNGs into (created if missing).</td>
+    </tr><tr>
+      <td class="col-name">views</td>
+      <td class="col-type">&quot;front&quot; | &quot;back&quot; | &quot;left&quot; | &quot;right&quot; | &quot;top&quot; | &quot;bottom&quot; | &quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;3q_front&quot; | &quot;3q_rear&quot; | &quot;isometric_right&quot; | &quot;isometric_left&quot;[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Views to capture, each written as `&lt;view&gt;.png`. Defaults to the full 8-view set (front/back/left/right/top/bottom/3q_front/3q_rear). Accepts compass aliases (north/south/east/west) too.</td>
+    </tr><tr>
+      <td class="col-name">size</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Square pixel size of each rendered view. <span class="param-meta">(default: <code>512</code>) [min: 16, max: 8192]</span></td>
+    </tr><tr>
+      <td class="col-name">zoom</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Explicit camera zoom held constant across every view (e.g. 0.18 for a humanoid full-body). When omitted, the current zoom is preserved — it is NOT reset per view.</td>
+    </tr><tr>
+      <td class="col-name">target</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Camera look-at point shared by all views (defaults to each preset's target). <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">background</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">&quot;transparent&quot; or a hex color like &quot;#000000&quot;. Defaults to the viewport background.</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-export_silhouette_mask" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">export_silhouette_mask</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Export Silhouette Mask</p>
+      <p class="card-desc">Render the model from one view as a pure black/white silhouette mask (foreground = white, background = black) and write it to a PNG — ready for a direct IoU comparison against a reference silhouette without any manual offline render+diff. Uses a transparent-background render and thresholds on alpha. Returns `{ path, view, size, foreground, coverage }`.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">out_path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute path to write the silhouette mask PNG to.</td>
+    </tr><tr>
+      <td class="col-name">view</td>
+      <td class="col-type">&quot;front&quot; | &quot;back&quot; | &quot;left&quot; | &quot;right&quot; | &quot;top&quot; | &quot;bottom&quot; | &quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;3q_front&quot; | &quot;3q_rear&quot; | &quot;isometric_right&quot; | &quot;isometric_left&quot;</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">View to render the silhouette from. Defaults to front. <span class="param-meta">(default: <code>&quot;front&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">size</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Square pixel size of the mask. <span class="param-meta">(default: <code>512</code>) [min: 16, max: 4096]</span></td>
+    </tr><tr>
+      <td class="col-name">zoom</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Explicit camera zoom (preserves current zoom when omitted).</td>
+    </tr><tr>
+      <td class="col-name">target</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Camera look-at point. <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">threshold</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Alpha cutoff (0–255) above which a pixel counts as foreground. <span class="param-meta">(default: <code>8</code>) [min: 0, max: 255]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -829,6 +937,70 @@
       <td class="col-type">number[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">If set as [t0, t1], return only keyframes with t0 ≤ time ≤ t1. <span class="param-meta">[minItems: 2, maxItems: 2]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-capture_anim_contact_sheet" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">capture_anim_contact_sheet</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Capture Animation Contact Sheet</p>
+      <p class="card-desc">Render an animation as a single contact-sheet PNG — one row per view, one column per evenly-spaced frame — in ONE call, instead of many animation_timeline + capture_screenshot round-trips (the exact path that silently fails mid-sweep). Scrubs the timeline, applies each camera view with a constant zoom, composites the grid off-screen, and writes it. Restores the timeline cursor and camera afterwards. Returns `{ animation, frames, views, contact_sheet, cells }`.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">out_path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute path to write the combined contact-sheet PNG to.</td>
+    </tr><tr>
+      <td class="col-name">animation</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Animation name or UUID to sample. Defaults to the currently selected animation.</td>
+    </tr><tr>
+      <td class="col-name">frames</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Number of evenly-spaced frames sampled across the animation length. <span class="param-meta">(default: <code>8</code>) [min: 1, max: 64]</span></td>
+    </tr><tr>
+      <td class="col-name">views</td>
+      <td class="col-type">&quot;front&quot; | &quot;back&quot; | &quot;left&quot; | &quot;right&quot; | &quot;top&quot; | &quot;bottom&quot; | &quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;3q_front&quot; | &quot;3q_rear&quot; | &quot;isometric_right&quot; | &quot;isometric_left&quot;[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">One row per view. Defaults to [right, front, left, 3q_front]. Accepts compass aliases.</td>
+    </tr><tr>
+      <td class="col-name">size</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Square pixel size of each cell (frame) in the sheet. <span class="param-meta">(default: <code>256</code>) [min: 16, max: 2048]</span></td>
+    </tr><tr>
+      <td class="col-name">zoom</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Explicit camera zoom held constant across all cells (preserves current zoom when omitted).</td>
+    </tr><tr>
+      <td class="col-name">target</td>
+      <td class="col-type">number[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Camera look-at point shared by every cell. <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">background</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Cell background: &quot;transparent&quot; or a hex color like &quot;#000000&quot;.</td>
     </tr></tbody>
     </table>
       </div>
@@ -5330,6 +5502,35 @@
         <p class="empty-params">No parameters</p>
       </div>
     </div>
+<div id="tool-reload_project" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">reload_project</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Reload Project In-Place</p>
+      <p class="card-desc">Reload the current project (or a given `path`) from its saved .bbmodel IN-PLACE — the live session is replaced with the on-disk state and the stale tab is closed, so the net tab count stays the same (unlike `open_project_file`, which always adds a tab). This is the fix for the direct-write footgun: when a script writes changes straight into the .bbmodel file (e.g. an external format upgrade), the running Blockbench session stays stale and export/animation sweeps see the OLD data (often 0 animations). Call this after any out-of-band file write to resync. WARNING: discards unsaved in-session changes — that is the point of a reload. Returns `{ reloaded, name, animations, path }`.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Absolute path to the .bbmodel to reload from. When omitted, reloads the CURRENT project from its own `save_path` (the file it was last saved to / opened from).</td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
         </section>
 <section id="cat-workflow-extras-fork" class="category-section">
           <h3 class="category-title">Workflow Extras (fork)</h3>
@@ -5873,6 +6074,55 @@
     </table>
       </div>
     </div>
+<div id="tool-place_section" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">place_section</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Place Section</p>
+      <p class="card-desc">Build a whole Forge-style 'section' — one named group containing cubes and/or meshes, all sharing one texture — in a SINGLE call, instead of separate add_group + place_cube + place_mesh + bind round-trips. The group is created if missing (optionally nested under `parent`) or reused if it already exists. Texture is resolved once and applied to every element; a bad texture name throws rather than producing a silent untextured build. Returns `{ group, group_uuid, cubes_added, meshes_added }`.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">group</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Name of the section's destination group/bone. Reused if a group with this name already exists, otherwise created.</td>
+    </tr><tr>
+      <td class="col-name">parent</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Optional parent group/bone (name or UUID, or &quot;root&quot;) to nest the section group under when it has to be created. Ignored if the group already exists.</td>
+    </tr><tr>
+      <td class="col-name">texture</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Texture id/name applied to every cube and mesh in this section. Falls back to the project's default texture when omitted; throws if a name is given but not found (no silent 0-texture build).</td>
+    </tr><tr>
+      <td class="col-name">cubes</td>
+      <td class="col-type">object[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Cubes to create inside the section group. <span class="param-meta">(default: <code>[]</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">meshes</td>
+      <td class="col-type">object[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Meshes to create inside the section group. <span class="param-meta">(default: <code>[]</code>)</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
         </section>
 <section id="cat-attachment-points-fork" class="category-section">
           <h3 class="category-title">Attachment Points (fork)</h3>
@@ -6396,7 +6646,7 @@
       </section>
 
       <footer class="page-footer">
-        Generated 2026-06-08T18:51:47.348Z from Zod schemas
+        Generated 2026-06-09T21:16:20.947Z from Zod schemas
       </footer>
     </main>
   </div>

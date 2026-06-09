@@ -6,9 +6,21 @@ import {
   captureScreenshot,
   captureScreenshotAdvanced,
   captureAppScreenshot,
+  applyCameraView,
+  snapshotCamera,
+  restoreCamera,
+  renderPreviewToDataUrl,
+  writePngDataUrl,
+  buildSilhouetteMask,
+  ensureDir,
+  joinPath,
+  ORTHO_VIEW_NAMES,
+  VIEW_PRESET_IDS,
 } from "@/lib/util";
 import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
 import { vector3Schema, projectionEnum } from "@/lib/zodObjects";
+
+const viewNameEnum = z.enum(Object.keys(VIEW_PRESET_IDS) as [string, ...string[]]);
 
 export const captureScreenshotParameters = z.object({
   project: z.string().optional().describe("Project name or UUID."),
@@ -62,6 +74,75 @@ export const setCameraAngleParameters = z.object({
     ),
 });
 
+export const captureOrthoSetParameters = z.object({
+  out_dir: z
+    .string()
+    .describe("Absolute directory to write the labeled PNGs into (created if missing)."),
+  views: z
+    .array(viewNameEnum)
+    .optional()
+    .describe(
+      "Views to capture, each written as `<view>.png`. Defaults to the full " +
+        "8-view set (front/back/left/right/top/bottom/3q_front/3q_rear). " +
+        "Accepts compass aliases (north/south/east/west) too."
+    ),
+  size: z
+    .number()
+    .int()
+    .min(16)
+    .max(8192)
+    .optional()
+    .default(512)
+    .describe("Square pixel size of each rendered view."),
+  zoom: z
+    .number()
+    .positive()
+    .optional()
+    .describe(
+      "Explicit camera zoom held constant across every view (e.g. 0.18 for a " +
+        "humanoid full-body). When omitted, the current zoom is preserved — it " +
+        "is NOT reset per view."
+    ),
+  target: vector3Schema
+    .optional()
+    .describe("Camera look-at point shared by all views (defaults to each preset's target)."),
+  background: z
+    .string()
+    .optional()
+    .describe('"transparent" or a hex color like "#000000". Defaults to the viewport background.'),
+});
+
+export const exportSilhouetteMaskParameters = z.object({
+  out_path: z
+    .string()
+    .describe("Absolute path to write the silhouette mask PNG to."),
+  view: viewNameEnum
+    .optional()
+    .default("front")
+    .describe("View to render the silhouette from. Defaults to front."),
+  size: z
+    .number()
+    .int()
+    .min(16)
+    .max(4096)
+    .optional()
+    .default(512)
+    .describe("Square pixel size of the mask."),
+  zoom: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Explicit camera zoom (preserves current zoom when omitted)."),
+  target: vector3Schema.optional().describe("Camera look-at point."),
+  threshold: z
+    .number()
+    .min(0)
+    .max(255)
+    .optional()
+    .default(8)
+    .describe("Alpha cutoff (0–255) above which a pixel counts as foreground."),
+});
+
 export const cameraToolDocs: ToolSpec[] = [
   {
     name: "capture_screenshot",
@@ -92,6 +173,37 @@ export const cameraToolDocs: ToolSpec[] = [
       destructiveHint: true,
     },
     parameters: setCameraAngleParameters,
+    status: STATUS_EXPERIMENTAL,
+  },
+  {
+    name: "capture_ortho_set",
+    description:
+      "Render a labeled set of orthographic/iso views of the model to PNG " +
+      "files in ONE call — the multi-angle QA sheet without N separate " +
+      "set_camera_angle + capture_screenshot round-trips (each of which is a " +
+      "failure point, and set_camera_angle resets zoom). Zoom is held constant " +
+      "across all views internally. Writes `<view>.png` per requested view and " +
+      "returns `{ paths, count }`. The live camera is restored afterwards.",
+    annotations: {
+      title: "Capture Ortho Set",
+      readOnlyHint: true,
+    },
+    parameters: captureOrthoSetParameters,
+    status: STATUS_EXPERIMENTAL,
+  },
+  {
+    name: "export_silhouette_mask",
+    description:
+      "Render the model from one view as a pure black/white silhouette mask " +
+      "(foreground = white, background = black) and write it to a PNG — ready " +
+      "for a direct IoU comparison against a reference silhouette without any " +
+      "manual offline render+diff. Uses a transparent-background render and " +
+      "thresholds on alpha. Returns `{ path, view, size, foreground, coverage }`.",
+    annotations: {
+      title: "Export Silhouette Mask",
+      readOnlyHint: true,
+    },
+    parameters: exportSilhouetteMaskParameters,
     status: STATUS_EXPERIMENTAL,
   },
 ];
@@ -179,4 +291,59 @@ export function registerCameraTools() {
       return captureScreenshot();
     },
   }, cameraToolDocs[2].status);
+
+  // ---- capture_ortho_set ----
+  createTool(cameraToolDocs[3].name, {
+    ...cameraToolDocs[3],
+    async execute({ out_dir, views, size, zoom, target, background }) {
+      if (!Project) throw new Error("No project is open.");
+      const dir = ensureDir(out_dir);
+      const viewList: string[] = views && views.length ? views : ORTHO_VIEW_NAMES;
+
+      const snap = snapshotCamera();
+      const paths: Record<string, string> = {};
+      try {
+        for (const view of viewList) {
+          applyCameraView(view, { target, zoom });
+          const dataUrl = renderPreviewToDataUrl({ size, background });
+          const filePath = joinPath(dir, `${view}.png`);
+          writePngDataUrl(dataUrl, filePath);
+          paths[view] = filePath;
+        }
+      } finally {
+        restoreCamera(snap);
+      }
+
+      return JSON.stringify({ paths, count: Object.keys(paths).length });
+    },
+  }, cameraToolDocs[3].status);
+
+  // ---- export_silhouette_mask ----
+  createTool(cameraToolDocs[4].name, {
+    ...cameraToolDocs[4],
+    async execute({ out_path, view, size, zoom, target, threshold }) {
+      if (!Project) throw new Error("No project is open.");
+
+      const snap = snapshotCamera();
+      let rendered: string;
+      try {
+        applyCameraView(view, { target, zoom });
+        // Transparent background so the alpha channel is the silhouette.
+        rendered = renderPreviewToDataUrl({ size, background: "transparent" });
+      } finally {
+        restoreCamera(snap);
+      }
+
+      const mask = await buildSilhouetteMask(rendered, threshold);
+      writePngDataUrl(mask.dataUrl, out_path);
+
+      return JSON.stringify({
+        path: out_path,
+        view,
+        size,
+        foreground: mask.foreground,
+        coverage: mask.total ? mask.foreground / mask.total : 0,
+      });
+    },
+  }, cameraToolDocs[4].status);
 }

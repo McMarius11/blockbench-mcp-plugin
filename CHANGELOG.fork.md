@@ -6,6 +6,28 @@ Upstream changes are NOT logged here — see upstream `CHANGELOG.md` (if present
 
 ---
 
+## [unreleased] — 2026-06-09 — wishlist tier tools (reload, live captures, section)
+
+Closes the genuine gaps from the pipeline tool wishlist (`mcp_plugin_tools_needed.md`): the in-place reload footgun plus the three "only-Blockbench-can-render" live capture tools, and a one-call section builder. Build + `bun test` (66/66) green, smoke `[19/19]` (92/92), `bun run docs:build` reports **159 tools**. All five live-verified (rendered PNGs visually confirmed; tab hygiene preserved). The render/section tools ship **EXPERIMENTAL**.
+
+> Shared multi-view render helpers (camera-preset map, off-screen render-to-data-URL, PNG write, contact-sheet compositing, silhouette masking) live in `lib/util.ts` and are used by both `camera.ts` and `animation.ts`. View names map to Blockbench's `DefaultCameraPresets` compass angles, with `front/back/left/right` aliases (convention: model front faces north/−Z).
+
+### Added — in-place project reload (`server/tools/silent.ts`)
+
+- **`reload_project(path?)` → `{ reloaded, name, format, animations, path }`** — reload the current project (or a given file) from disk IN-PLACE: loads the saved state and closes the stale tab, so the net tab count stays constant (unlike `open_project_file`, which always adds a tab). Fixes the direct-write footgun where a script writes straight into the `.bbmodel` and the live session goes stale (export/anim sweeps see 0 animations). Animations are counted off — and the session is left selected on — the reloaded project (a closing stale tab would otherwise switch the active project). Discards unsaved in-session edits by design. Shares the file-read/validate helper with `open_project_file`.
+
+### Added — live capture tools (`server/tools/camera.ts`, `animation.ts`)
+
+- **`capture_ortho_set(out_dir, views?, size?, zoom?, target?, background?)` → `{ paths, count }`** (EXPERIMENTAL, `camera.ts`) — render a labeled set of ortho/iso views (`front/back/left/right/top/bottom/3q_front/3q_rear`, compass aliases too) to `<view>.png` in ONE call, zoom held constant across views; restores the live camera. Replaces N `set_camera_angle`+`capture_screenshot` round-trips (each of which resets zoom — issue #3).
+- **`export_silhouette_mask(out_path, view?, size?, zoom?, target?, threshold?)` → `{ path, view, size, foreground, coverage }`** (EXPERIMENTAL, `camera.ts`) — render one view as a pure black/white silhouette (transparent-background render thresholded on alpha) for direct IoU against a reference, no offline render+diff.
+- **`capture_anim_contact_sheet(out_path, animation?, frames?, views?, size?, zoom?, target?, background?)` → `{ animation, frames, views, contact_sheet, cells }`** (EXPERIMENTAL, `animation.ts`) — render an animation as a single contact sheet (one row per view, one column per evenly-spaced frame), scrubbing the timeline and compositing off-screen; restores camera + timeline cursor. Replaces the brittle many-`animation_timeline`+`capture` sweep.
+
+### Added — one-call section builder (`server/tools/workflow_extra.ts`)
+
+- **`place_section(group, parent?, texture?, cubes?, meshes?)` → `{ group, group_uuid, cubes_added, meshes_added }`** (EXPERIMENTAL) — build a whole Forge-style section (one named group + cubes and/or meshes sharing one texture) in a single call instead of `add_group`+`place_cube`+`place_mesh`+bind round-trips. The group is reused if it already exists, else created under `parent`. A bad texture name throws rather than yielding a silent untextured build.
+
+---
+
 ## [unreleased] — 2026-06-08 — pipeline issue batch #2 (#19–#24)
 
 Second wave from the Asset Generator Blockbench pipeline — the build/animation/export-loop gaps left after the #2–#16 batch. Build (`bun run build`) + `bun test` (66/66) green, smoke `[18/18]`, `bun run docs:build` reports **154 tools**. `validate_rig` ships **EXPERIMENTAL** (threshold heuristics mirror `validate_asset.py`; tune for your rig).
