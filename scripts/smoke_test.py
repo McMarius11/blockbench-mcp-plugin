@@ -1208,6 +1208,93 @@ class TestRunner:
             also_check=lambda t: json.loads(t)["tab"] == "edit",
         )
 
+    def t_tier_tools(self) -> None:
+        """Wishlist tier tools: place_section (one-call group+cubes+texture),
+        capture_ortho_set / export_silhouette_mask / capture_anim_contact_sheet
+        (live render to PNG), reload_project (in-place reload, no extra tab)."""
+        print("\n[19/19] tier tools (place_section, captures, reload_project)")
+
+        self.c.call("create_project", {"name": "tier_smoke", "format": "free"})
+        self.c.call("create_texture", {"name": "ttex", "width": 16, "height": 16,
+                                       "fill_color": "#4488cc", "layer_name": "base"})
+
+        # place_section — group + cubes + texture in one call.
+        ok, text = self.c.call("place_section", {
+            "group": "wing", "texture": "ttex",
+            "cubes": [
+                {"name": "wa", "from": [-6, 0, -2], "to": [-2, 8, 2], "origin": [-4, 0, 0]},
+                {"name": "wb", "from": [2, 0, -2], "to": [6, 8, 2], "origin": [4, 0, 0]},
+            ],
+        })
+        self.expect_ok(
+            "place_section builds group + cubes + texture in one call", ok, text,
+            also_check=lambda t: json.loads(t)["cubes_added"] == 2
+            and bool(json.loads(t)["group_uuid"]),
+        )
+        # place_section fails loudly on a bad texture (no silent untextured build).
+        ok, text = self.c.call("place_section", {
+            "group": "wing2", "texture": "does_not_exist",
+            "cubes": [{"name": "x", "from": [0, 0, 0], "to": [1, 1, 1]}],
+        })
+        self.expect_err("place_section throws on unknown texture", ok, text,
+                        contains="does_not_exist")
+
+        # capture_ortho_set — labeled PNGs written to disk.
+        odir = os.path.join(self.workdir, "ortho")
+        ok, text = self.c.call("capture_ortho_set", {
+            "out_dir": odir, "views": ["front", "right", "3q_front"], "size": 128,
+        })
+        self.expect_ok(
+            "capture_ortho_set writes one PNG per view", ok, text,
+            also_check=lambda t: (lambda p: len(p) == 3
+                                  and all(os.path.getsize(v) > 0 for v in p.values()))(
+                json.loads(t)["paths"]),
+        )
+
+        # export_silhouette_mask — mask PNG with non-zero foreground.
+        mask = os.path.join(self.workdir, "mask.png")
+        ok, text = self.c.call("export_silhouette_mask", {
+            "view": "front", "size": 128, "out_path": mask,
+        })
+        self.expect_ok(
+            "export_silhouette_mask writes a mask with foreground pixels", ok, text,
+            also_check=lambda t: json.loads(t)["foreground"] > 0
+            and os.path.getsize(mask) > 0,
+        )
+
+        # capture_anim_contact_sheet — needs an animation on the section bone.
+        self.c.call("create_animation", {"name": "flap", "loop": True, "animation_length": 1.0,
+                                         "bones": {"wing": [{"time": 0, "rotation": [0, 0, 0]},
+                                                            {"time": 1, "rotation": [0, 30, 0]}]}})
+        sheet = os.path.join(self.workdir, "sheet.png")
+        ok, text = self.c.call("capture_anim_contact_sheet", {
+            "animation": "flap", "frames": 3, "views": ["front", "3q_front"],
+            "size": 96, "out_path": sheet,
+        })
+        self.expect_ok(
+            "capture_anim_contact_sheet composites a frames×views grid", ok, text,
+            also_check=lambda t: json.loads(t)["cells"] == 6 and os.path.getsize(sheet) > 0,
+        )
+
+        # reload_project — in-place reload keeps the net tab count constant.
+        bbmodel = os.path.join(self.workdir, "tier.bbmodel")
+        self.c.call("save_project_silent", {"path": bbmodel})
+
+        def _tab_count() -> int:
+            ok2, t2 = self.c.call(
+                "risky_eval", {"code": "ModelProject.all.length"})
+            return int(json.loads(t2)) if ok2 else -1
+
+        before = _tab_count()
+        ok, text = self.c.call("reload_project", {})
+        after = _tab_count()
+        self.expect_ok(
+            "reload_project reloads in place (animations intact, no extra tab)", ok, text,
+            also_check=lambda t: json.loads(t)["reloaded"] is True
+            and json.loads(t)["animations"] == 1
+            and after == before,
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Entry point
@@ -1287,6 +1374,7 @@ def main() -> int:
         runner.t_cit_texture_resolution()
         runner.t_new_feature_tools()
         runner.t_issue_batch2()
+        runner.t_tier_tools()
     finally:
         if args.keep_test_files:
             print(f"\nkeeping test artifacts at {workdir} (and test project tabs)")

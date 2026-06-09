@@ -29,6 +29,64 @@ function ensureProject(): void {
   if (!Project) throw new Error("No project is open.");
 }
 
+/**
+ * Reads a .bbmodel from disk and parses it into a model object + a
+ * FileResult-like descriptor, validating the model format is registered.
+ * Shared by `open_project_file` and `reload_project` — the only difference
+ * between those two is what they do with the result (new tab vs. in-place
+ * reload that closes the stale tab).
+ */
+function readBbmodelFile(path: string): {
+  model: any;
+  file: { path: string; name: string; content: string };
+  formatId: string;
+} {
+  const fs = getFs();
+  if (!fs.existsSync(path)) {
+    throw new Error(`File not found: ${path}`);
+  }
+
+  // .bbmodel is text: either plain JSON or "<lz>"-prefixed LZUTF8.
+  let content: string = fs.readFileSync(path, "utf-8");
+  if (content.startsWith("<lz>")) {
+    // @ts-ignore - LZUTF8 is bundled into Blockbench
+    if (typeof LZUTF8 === "undefined") {
+      throw new Error(
+        "File is LZUTF8-compressed but LZUTF8 is not available in this Blockbench version."
+      );
+    }
+    // @ts-ignore
+    content = LZUTF8.decompress(content.substring(4), {
+      inputEncoding: "StorageBinaryString",
+    });
+  }
+
+  let model: any;
+  try {
+    model = JSON.parse(content);
+  } catch (e: any) {
+    throw new Error(`Failed to parse JSON from ${path}: ${e?.message ?? e}`);
+  }
+
+  const formatId: string | undefined = model?.meta?.model_format;
+  if (!formatId) {
+    throw new Error(`File missing meta.model_format — not a valid .bbmodel.`);
+  }
+  // @ts-ignore - Formats is a Blockbench global
+  if (!Formats[formatId]) {
+    throw new Error(
+      `Unknown model format "${formatId}" — not registered in this Blockbench version.`
+    );
+  }
+
+  const file = {
+    path,
+    name: path.split(/[\/\\]/).pop() ?? "loaded.bbmodel",
+    content,
+  };
+  return { model, file, formatId };
+}
+
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
@@ -148,6 +206,17 @@ export const switchToTabParameters = z.object({
 });
 
 export const getCurrentTabParameters = z.object({});
+
+export const reloadProjectParameters = z.object({
+  path: z
+    .string()
+    .optional()
+    .describe(
+      "Absolute path to the .bbmodel to reload from. When omitted, reloads " +
+        "the CURRENT project from its own `save_path` (the file it was last " +
+        "saved to / opened from)."
+    ),
+});
 
 // ---------------------------------------------------------------------------
 // Tool docs
@@ -284,6 +353,27 @@ export const silentToolDocs: ToolSpec[] = [
       openWorldHint: false,
     },
     parameters: getCurrentTabParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "reload_project",
+    description:
+      "Reload the current project (or a given `path`) from its saved .bbmodel " +
+      "IN-PLACE — the live session is replaced with the on-disk state and the " +
+      "stale tab is closed, so the net tab count stays the same (unlike " +
+      "`open_project_file`, which always adds a tab). This is the fix for the " +
+      "direct-write footgun: when a script writes changes straight into the " +
+      ".bbmodel file (e.g. an external format upgrade), the running Blockbench " +
+      "session stays stale and export/animation sweeps see the OLD data (often " +
+      "0 animations). Call this after any out-of-band file write to resync. " +
+      "WARNING: discards unsaved in-session changes — that is the point of a " +
+      "reload. Returns `{ reloaded, name, animations, path }`.",
+    annotations: {
+      title: "Reload Project In-Place",
+      destructiveHint: true,
+      openWorldHint: false,
+    },
+    parameters: reloadProjectParameters,
     status: STATUS_STABLE,
   },
 ];
@@ -624,50 +714,7 @@ export function registerSilentTools() {
     {
       ...silentToolDocs[7],
       async execute({ path }: { path: string }) {
-        const fs = getFs();
-        if (!fs.existsSync(path)) {
-          throw new Error(`File not found: ${path}`);
-        }
-
-        // .bbmodel is text: either plain JSON or "<lz>"-prefixed LZUTF8.
-        let content: string = fs.readFileSync(path, "utf-8");
-
-        if (content.startsWith("<lz>")) {
-          // @ts-ignore - LZUTF8 is bundled into Blockbench
-          if (typeof LZUTF8 === "undefined") {
-            throw new Error(
-              "File is LZUTF8-compressed but LZUTF8 is not available in this Blockbench version."
-            );
-          }
-          // @ts-ignore
-          content = LZUTF8.decompress(content.substring(4), {
-            inputEncoding: "StorageBinaryString",
-          });
-        }
-
-        let model: any;
-        try {
-          model = JSON.parse(content);
-        } catch (e: any) {
-          throw new Error(
-            `Failed to parse JSON from ${path}: ${e?.message ?? e}`
-          );
-        }
-
-        const formatId: string | undefined = model?.meta?.model_format;
-        if (!formatId) {
-          throw new Error(
-            `File missing meta.model_format — not a valid .bbmodel.`
-          );
-        }
-
-        // @ts-ignore - Formats is a Blockbench global
-        const format = Formats[formatId];
-        if (!format) {
-          throw new Error(
-            `Unknown model format "${formatId}" — not registered in this Blockbench version.`
-          );
-        }
+        const { model, file, formatId } = readBbmodelFile(path);
 
         // A .bbmodel is always loaded by the PROJECT codec, which runs its own
         // `setupProject(Formats[model.meta.model_format])` — i.e. it creates
@@ -685,14 +732,6 @@ export function registerSilentTools() {
         if (!codec || typeof codec.load !== "function") {
           throw new Error("Blockbench project codec not available.");
         }
-
-        // Synthesize a FileResult-like object — Blockbench's load() reads
-        // .path / .name from this for save-back resolution.
-        const file = {
-          path,
-          name: path.split(/[\/\\]/).pop() ?? "loaded.bbmodel",
-          content,
-        };
 
         // @ts-ignore
         codec.load(model, file);
@@ -943,5 +982,101 @@ export function registerSilentTools() {
       },
     },
     silentToolDocs[10].status
+  );
+
+  // ---- reload_project ----
+  createTool(
+    silentToolDocs[11].name,
+    {
+      ...silentToolDocs[11],
+      async execute({ path }: { path?: string }) {
+        ensureProject();
+
+        // Resolve the source file: explicit path wins, else the current
+        // project's own save_path.
+        // @ts-ignore - Project is a Blockbench global
+        const sourcePath: string | undefined = path ?? Project?.save_path;
+        if (!sourcePath) {
+          throw new Error(
+            "No path given and the current project has no save_path. Save the " +
+              "project first (save_project_silent) or pass an explicit path."
+          );
+        }
+
+        const { model, file, formatId } = readBbmodelFile(sourcePath);
+
+        // @ts-ignore - Codecs is a Blockbench global
+        const codec = Codecs.project;
+        if (!codec || typeof codec.load !== "function") {
+          throw new Error("Blockbench project codec not available.");
+        }
+
+        // Remember the stale project so we can close it AFTER the fresh one
+        // loads. `Codecs.project.load` always runs setupProject() → a new tab;
+        // closing the old tab afterwards keeps the net tab count constant
+        // (true in-place reload). Marking it saved first suppresses the
+        // unsaved-changes confirm dialog, which would otherwise block this
+        // headless call — discarding live edits is the explicit intent of a
+        // reload.
+        // @ts-ignore
+        const stale = Project;
+        // @ts-ignore
+        const staleUuid: string | undefined = stale?.uuid;
+
+        // @ts-ignore
+        codec.load(model, file);
+
+        // Capture the freshly-loaded project NOW. `Animation.all` reflects the
+        // ACTIVE project, and closing the stale tab below can switch the active
+        // project away from this one — so read everything off `loaded` and
+        // re-select it afterwards, both for the response counts and so the
+        // caller's next export/sweep runs against the reloaded data.
+        // @ts-ignore - Project now points at the freshly loaded tab
+        const loaded = Project;
+        if (loaded) {
+          // @ts-ignore
+          loaded.save_path = sourcePath;
+          // @ts-ignore
+          loaded.saved = true;
+        }
+        // @ts-ignore - Animation.all is the active project's animation list
+        const animations =
+          typeof Animation !== "undefined" ? Animation.all.length : 0;
+        // @ts-ignore
+        const name = loaded?.name || file.name.replace(/\.bbmodel$/i, "");
+
+        // Close the stale tab (only if it is a different project than the one
+        // we just loaded — guard against any edge case where load reused it).
+        // @ts-ignore
+        if (stale && staleUuid && loaded?.uuid !== staleUuid) {
+          try {
+            // @ts-ignore - mark saved so close() does not prompt
+            stale.saved = true;
+            // @ts-ignore - ModelProject.close([force]) tears the tab down
+            stale.close(true);
+          } catch {
+            // Best-effort: a fresh, correct project is already active even if
+            // the stale tab lingers. Don't fail the reload over cleanup.
+          }
+        }
+
+        // Closing the stale tab may have changed the selected project; make the
+        // reloaded one active again so the session is left on it.
+        // @ts-ignore
+        if (loaded && !loaded.selected && typeof loaded.select === "function") {
+          // @ts-ignore
+          loaded.select();
+        }
+
+        return JSON.stringify({
+          reloaded: true,
+          name,
+          format: formatId,
+          animations,
+          path: sourcePath,
+        });
+      },
+    },
+    silentToolDocs[11].status
   );
 }

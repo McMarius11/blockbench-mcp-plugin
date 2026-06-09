@@ -10,7 +10,7 @@ Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner
 
 | Category | Tools |
 |---|---|
-| **File I/O (silent)** | `save_project_silent`, `export_gltf_silent` (Edit-tab guard), `force_backup_now`, `open_project_file`, `export_texture_to_png`, `set_project_resolution`, `delete_texture`, `switch_to_tab` (idempotent), `get_current_tab`, `get_project_state` |
+| **File I/O (silent)** | `save_project_silent`, `export_gltf_silent` (Edit-tab guard), `force_backup_now`, `open_project_file`, `reload_project` (in-place, no extra tab), `export_texture_to_png`, `set_project_resolution`, `delete_texture`, `switch_to_tab` (idempotent), `get_current_tab`, `get_project_state` |
 | **Plugin lifecycle** | `install_plugin_from_path` |
 | **Outliner & attachment points** | `create_locator`, `create_null_object`, `add_reference_image` |
 | **Symmetry & pivots** | `mirror_elements`, `set_origin` |
@@ -23,6 +23,8 @@ Fork of [`jasonjgardner/blockbench-mcp-plugin`](https://github.com/jasonjgardner
 | **Model analysis & UV QA** | `compare_models`, `validate_rig`, `find_uv_overlaps`, `uv_island_list`, `uv_density_per_face` |
 | **Cube placement (upstream, extended)** | `place_cube` (per-element `parent` for one-call rigged hierarchies) |
 | **Camera (upstream, extended)** | `capture_screenshot` (+ `width`/`height`/`background`/`return_format`), `set_camera_angle` (preserves `zoom` + accepts explicit `zoom`) |
+| **Live capture (render to PNG)** | `capture_ortho_set` (labeled ortho/iso set, one call), `capture_anim_contact_sheet` (frames×views grid), `export_silhouette_mask` (B/W mask for IoU) |
+| **One-call builders** | `place_section` (group + cubes/meshes + texture in one call) |
 | **Project I/O** | `convert_project` |
 | **Model import** | `from_java_model` |
 | **Layout** | `align_elements`, `distribute_elements`, `set_group_visibility`, `lock_group` |
@@ -39,6 +41,7 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 | `save_project_silent(path, compressed?)` | Direct `.bbmodel` write via `Codecs.project.compile()`, updates `Project.save_path`. Default writes plain JSON (modern Blockbench 5.x format); opt in to legacy LZUTF8 with `compressed: true` |
 | `export_gltf_silent(path, embed_textures?, animations?, require_edit_tab?)` | Direct `.glb`/`.gltf` write, no dialog. `require_edit_tab` (default true) auto-switches to the Edit tab before compiling and reports `switched_from` — guards Blockbench [#2224](https://github.com/JannisX11/blockbench/issues/2224) (Animate-tab export bakes the scrub frame into the rest pose). Set false to opt out |
 | `open_project_file(path)` | Load existing `.bbmodel` from disk into the running instance — handles both `<lz>`-prefixed LZUTF8 and plain-JSON files; format-aware via `Formats[model.meta.model_format]` |
+| `reload_project(path?)` | Reload the current project (or a given file) from disk IN-PLACE → `{ reloaded, name, format, animations, path }`. Loads the saved state and closes the stale tab, so the net tab count stays constant (unlike `open_project_file`, which adds a tab). Fixes the direct-write footgun — after a script writes straight into the `.bbmodel`, the live session goes stale (sweeps see 0 animations); this resyncs it. Discards unsaved in-session edits by design |
 | `export_texture_to_png(texture_id, path)` | Write a single project texture to disk as PNG via `texture.canvas.toDataURL` (composites layers automatically) |
 | `force_backup_now()` | Trigger an immediate auto-save backup |
 | `set_project_resolution(width, height)` | Set `texture_width`/`texture_height` (UV coordinate space) |
@@ -121,6 +124,22 @@ The upstream plugin exposes most of Blockbench's modeling/animation API — but 
 |---|---|
 | `capture_screenshot` (extended) | Adds `width`/`height` (fixed output resolution for reproducible QA frames; both required together), `background` (`"transparent"` or a hex color, to avoid theme-dependent backdrops), and `return_format: "file"` (writes a PNG to `path` instead of returning it inline). The live viewport is restored after capture |
 | `set_camera_angle` (extended) | Now **preserves** the current zoom across angle changes (previously every call reset it) and accepts an optional explicit `zoom` for reproducible framing. `get_project_info` also reports a `camera` block (projection / zoom / position / target) so zoom is queryable without `risky_eval` |
+
+### Live capture (render to PNG — EXPERIMENTAL)
+
+These render the live preview to PNG files, collapsing multi-round-trip capture loops into one call. View names map to Blockbench's `DefaultCameraPresets` (`front/back/left/right` alias to north/south/west/east — model front = north/−Z; `3q_front`/`3q_rear` are isometric). The live camera (and, for the contact sheet, the timeline cursor) is restored afterwards.
+
+| Tool | Purpose |
+|---|---|
+| `capture_ortho_set(out_dir, views?, size?, zoom?, target?, background?)` | Render a labeled set of views to `<view>.png` in one call → `{ paths, count }`. Zoom is held constant across all views (no per-view reset). Default set: front/back/left/right/top/bottom/3q_front/3q_rear. Replaces N `set_camera_angle`+`capture_screenshot` round-trips |
+| `capture_anim_contact_sheet(out_path, animation?, frames?, views?, size?, zoom?, target?, background?)` | Render an animation as a single contact sheet — one row per view, one column per evenly-spaced frame → `{ animation, frames, views, contact_sheet, cells }`. Scrubs the timeline and composites the grid off-screen. Replaces the brittle many-`animation_timeline`+`capture` sweep |
+| `export_silhouette_mask(out_path, view?, size?, zoom?, target?, threshold?)` | Render one view as a pure black/white silhouette mask (transparent-background render thresholded on alpha) → `{ path, view, size, foreground, coverage }`. For direct IoU against a reference silhouette, no offline render+diff |
+
+### One-call builders
+
+| Tool | Purpose |
+|---|---|
+| `place_section(group, parent?, texture?, cubes?, meshes?)` | **EXPERIMENTAL.** Build a whole Forge-style section — one named group + cubes and/or meshes sharing one texture — in a single call → `{ group, group_uuid, cubes_added, meshes_added }`. Reuses the group if it exists, else creates it under `parent`. A bad texture name throws (no silent untextured build). Replaces `add_group`+`place_cube`+`place_mesh`+bind round-trips |
 
 ### Symmetry & pivots
 

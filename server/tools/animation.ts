@@ -2,7 +2,16 @@
 /// <reference types="blockbench-types" />
 import { z } from "zod";
 import { createTool, type ToolSpec } from "@/lib/factories";
-import { findGroupOrThrow } from "@/lib/util";
+import {
+  findGroupOrThrow,
+  applyCameraView,
+  snapshotCamera,
+  restoreCamera,
+  renderPreviewToDataUrl,
+  writePngDataUrl,
+  compositeContactSheet,
+  VIEW_PRESET_IDS,
+} from "@/lib/util";
 import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
 import {
   vector3Schema,
@@ -184,6 +193,52 @@ export const readAnimationKeyframesParameters = z.object({
     .length(2)
     .optional()
     .describe("If set as [t0, t1], return only keyframes with t0 ≤ time ≤ t1."),
+});
+
+export const captureAnimContactSheetParameters = z.object({
+  out_path: z
+    .string()
+    .describe("Absolute path to write the combined contact-sheet PNG to."),
+  animation: z
+    .string()
+    .optional()
+    .describe(
+      "Animation name or UUID to sample. Defaults to the currently selected animation."
+    ),
+  frames: z
+    .number()
+    .int()
+    .min(1)
+    .max(64)
+    .optional()
+    .default(8)
+    .describe("Number of evenly-spaced frames sampled across the animation length."),
+  views: z
+    .array(z.enum(Object.keys(VIEW_PRESET_IDS) as [string, ...string[]]))
+    .optional()
+    .describe(
+      "One row per view. Defaults to [right, front, left, 3q_front]. Accepts compass aliases."
+    ),
+  size: z
+    .number()
+    .int()
+    .min(16)
+    .max(2048)
+    .optional()
+    .default(256)
+    .describe("Square pixel size of each cell (frame) in the sheet."),
+  zoom: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Explicit camera zoom held constant across all cells (preserves current zoom when omitted)."),
+  target: vector3Schema
+    .optional()
+    .describe("Camera look-at point shared by every cell."),
+  background: z
+    .string()
+    .optional()
+    .describe('Cell background: "transparent" or a hex color like "#000000".'),
 });
 
 export const animationTimelineParameters = z.object({
@@ -463,6 +518,23 @@ export const animationToolDocs: ToolSpec[] = [
     annotations: { title: "Read Animation Keyframes", readOnlyHint: true },
     parameters: readAnimationKeyframesParameters,
     status: STATUS_STABLE,
+  },
+  {
+    name: "capture_anim_contact_sheet",
+    description:
+      "Render an animation as a single contact-sheet PNG — one row per view, " +
+      "one column per evenly-spaced frame — in ONE call, instead of many " +
+      "animation_timeline + capture_screenshot round-trips (the exact path that " +
+      "silently fails mid-sweep). Scrubs the timeline, applies each camera view " +
+      "with a constant zoom, composites the grid off-screen, and writes it. " +
+      "Restores the timeline cursor and camera afterwards. Returns " +
+      "`{ animation, frames, views, contact_sheet, cells }`.",
+    annotations: {
+      title: "Capture Animation Contact Sheet",
+      readOnlyHint: true,
+    },
+    parameters: captureAnimContactSheetParameters,
+    status: STATUS_EXPERIMENTAL,
   },
 ];
 
@@ -1619,5 +1691,89 @@ createTool(
       },
     },
     animationToolDocs[9].status
+  );
+
+  // ---- capture_anim_contact_sheet ----
+  createTool(
+    animationToolDocs[10].name,
+    {
+      ...animationToolDocs[10],
+      async execute({ out_path, animation, frames, views, size, zoom, target, background }) {
+        if (!Project) throw new Error("No project is open.");
+
+        const anim = animation
+          ? Animation.all.find(
+              (a) =>
+                a.uuid === animation ||
+                a.name === animation ||
+                a.name.endsWith(animation)
+            )
+          : Animation.selected;
+        if (!anim) {
+          throw new Error(
+            "No animation found or selected. Pass `animation` or select one first."
+          );
+        }
+        // @ts-ignore - select() may be absent on very old versions
+        anim.select?.();
+
+        const viewList: string[] =
+          views && views.length ? views : ["right", "front", "left", "3q_front"];
+        // @ts-ignore - length is the animation duration in seconds
+        const length: number = anim.length || 0;
+        // Evenly spaced sample times across [0, length]. With one frame, just
+        // grab t=0; with N>1, include both endpoints.
+        const times: number[] =
+          frames <= 1
+            ? [0]
+            : Array.from({ length: frames }, (_, i) =>
+                length > 0 ? (length * i) / (frames - 1) : 0
+              );
+
+        const snap = snapshotCamera();
+        // @ts-ignore - Timeline is a Blockbench global
+        const prevTime = Timeline.time;
+        const cells: Array<{ dataUrl: string; row: number; col: number }> = [];
+        try {
+          viewList.forEach((view, row) => {
+            applyCameraView(view, { target, zoom });
+            times.forEach((t, col) => {
+              // @ts-ignore
+              Timeline.time = t;
+              // @ts-ignore - apply the animation pose for this time to the model
+              Animator.preview();
+              const dataUrl = renderPreviewToDataUrl({ size, background });
+              cells.push({ dataUrl, row, col });
+            });
+          });
+        } finally {
+          // @ts-ignore
+          Timeline.time = prevTime;
+          // @ts-ignore
+          Animator.preview();
+          restoreCamera(snap);
+        }
+
+        const sheet = await compositeContactSheet(
+          cells,
+          times.length,
+          viewList.length,
+          size,
+          background && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(background)
+            ? background
+            : "#000000"
+        );
+        writePngDataUrl(sheet, out_path);
+
+        return JSON.stringify({
+          animation: anim.name,
+          frames: times.length,
+          views: viewList,
+          contact_sheet: out_path,
+          cells: cells.length,
+        });
+      },
+    },
+    animationToolDocs[10].status
   );
 }

@@ -416,6 +416,315 @@ export function captureScreenshotAdvanced(opts: ScreenshotOptions) {
   return imageContent(dataUrl, "image/png");
 }
 
+// ============================================================================
+// Multi-view capture helpers (camera presets, off-screen render, compositing)
+//
+// Shared by capture_ortho_set / export_silhouette_mask (camera.ts) and
+// capture_anim_contact_sheet (animation.ts). All of these drive Blockbench's
+// live Preview camera, so they live next to captureScreenshot rather than in a
+// pure lib.
+// ============================================================================
+
+/**
+ * Friendly view name → Blockbench `DefaultCameraPresets` id. Blockbench itself
+ * names its locked ortho angles by compass direction; this map adds the
+ * front/back/left/right aliases that callers expect. Convention: the model's
+ * FRONT faces north (−Z), matching the common Blockbench entity workflow.
+ */
+export const VIEW_PRESET_IDS: Record<string, string> = {
+  front: "north",
+  back: "south",
+  left: "west",
+  right: "east",
+  top: "top",
+  bottom: "bottom",
+  north: "north",
+  south: "south",
+  east: "east",
+  west: "west",
+  "3q_front": "isometric_right",
+  "3q_rear": "isometric_left",
+  isometric_right: "isometric_right",
+  isometric_left: "isometric_left",
+};
+
+export const ORTHO_VIEW_NAMES = [
+  "front",
+  "back",
+  "left",
+  "right",
+  "top",
+  "bottom",
+  "3q_front",
+  "3q_rear",
+];
+
+interface CameraSnapshot {
+  pos: number[];
+  target: number[];
+  projection: "orthographic" | "perspective";
+  persZoom?: number;
+  orthoZoom?: number;
+}
+
+function getSelectedPreview(): any {
+  // @ts-ignore - Preview is a Blockbench global
+  const preview = Preview.selected;
+  if (!preview) {
+    throw new Error("No preview available for the selected project.");
+  }
+  return preview;
+}
+
+/** Capture the current camera state so a batch of view changes can restore it. */
+export function snapshotCamera(): CameraSnapshot {
+  const preview = getSelectedPreview();
+  return {
+    pos: preview.camera.position.toArray(),
+    target: preview.controls.target.toArray(),
+    projection: preview.camera === preview.camOrtho ? "orthographic" : "perspective",
+    persZoom: preview.camPers?.zoom,
+    orthoZoom: preview.camOrtho?.zoom,
+  };
+}
+
+/** Restore a camera state captured with {@link snapshotCamera}. */
+export function restoreCamera(snap: CameraSnapshot): void {
+  const preview = getSelectedPreview();
+  preview.loadAnglePreset({
+    projection: snap.projection,
+    position: snap.pos,
+    target: snap.target,
+  });
+  if (preview.camPers && typeof snap.persZoom === "number") {
+    preview.camPers.zoom = snap.persZoom;
+    preview.camPers.updateProjectionMatrix();
+  }
+  if (preview.camOrtho && typeof snap.orthoZoom === "number") {
+    preview.camOrtho.zoom = snap.orthoZoom;
+    preview.camOrtho.updateProjectionMatrix();
+  }
+  preview.controls?.updateSceneScale?.();
+  preview.render();
+}
+
+/**
+ * Point the live preview camera at a named view. Zoom is preserved across the
+ * angle change unless an explicit `zoom` is given (mirrors set_camera_angle's
+ * issue-#3 fix). `target` overrides the preset's look-at point.
+ */
+export function applyCameraView(
+  view: string,
+  opts: { target?: number[]; zoom?: number } = {}
+): void {
+  const preview = getSelectedPreview();
+  const presetId = VIEW_PRESET_IDS[view];
+  if (!presetId) {
+    throw new Error(
+      `Unknown view "${view}". Valid views: ${Object.keys(VIEW_PRESET_IDS).join(", ")}.`
+    );
+  }
+  // @ts-ignore - DefaultCameraPresets is a Blockbench global
+  const src = DefaultCameraPresets.find((p: any) => p.id === presetId);
+  if (!src) {
+    throw new Error(`Camera preset "${presetId}" not found in this Blockbench version.`);
+  }
+
+  const persZoomBefore: number | undefined = preview.camPers?.zoom;
+  const orthoZoomBefore: number | undefined = preview.camOrtho?.zoom;
+
+  preview.loadAnglePreset({
+    projection: src.projection,
+    position: src.position,
+    target: opts.target ?? src.target,
+    locked_angle: src.locked_angle,
+  });
+
+  const persZoom = opts.zoom ?? persZoomBefore;
+  const orthoZoom = opts.zoom ?? orthoZoomBefore;
+  if (preview.camPers && typeof persZoom === "number") {
+    preview.camPers.zoom = persZoom;
+    preview.camPers.updateProjectionMatrix();
+  }
+  if (preview.camOrtho && typeof orthoZoom === "number") {
+    preview.camOrtho.zoom = orthoZoom;
+    preview.camOrtho.updateProjectionMatrix();
+  }
+  preview.controls?.updateSceneScale?.();
+}
+
+/**
+ * Render the current preview camera to a PNG data-URL at an optional square
+ * size / background, restoring the live renderer state afterwards. Like
+ * captureScreenshotAdvanced but returns the raw data-URL for in-process
+ * compositing (contact sheets, silhouette masks) instead of MCP image content.
+ */
+export function renderPreviewToDataUrl(
+  opts: { size?: number; background?: string } = {}
+): string {
+  const preview = getSelectedPreview();
+  const renderer = preview.renderer;
+  const canvas = preview.canvas as HTMLCanvasElement;
+  // @ts-ignore - THREE is a Blockbench runtime global
+  const prevSize = renderer.getSize(new THREE.Vector2());
+  // @ts-ignore
+  const prevColor = renderer.getClearColor(new THREE.Color());
+  const prevAlpha = renderer.getClearAlpha();
+  const cam = preview.camera;
+
+  let dataUrl: string | undefined;
+  try {
+    if (opts.background === "transparent") {
+      renderer.setClearColor(prevColor, 0);
+    } else if (opts.background && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(opts.background)) {
+      // @ts-ignore
+      renderer.setClearColor(new THREE.Color(opts.background), 1);
+    }
+    if (opts.size) {
+      renderer.setSize(opts.size, opts.size, false);
+      if (cam.isPerspectiveCamera) {
+        cam.aspect = 1;
+        cam.updateProjectionMatrix?.();
+      }
+    }
+    // @ts-ignore - Canvas is a Blockbench global; hide gizmos for a clean frame
+    Canvas.withoutGizmos(() => {
+      preview.render();
+      dataUrl = canvas.toDataURL("image/png");
+    });
+  } finally {
+    renderer.setSize(prevSize.x, prevSize.y, false);
+    if (cam.isPerspectiveCamera) {
+      cam.aspect = prevSize.x / prevSize.y;
+      cam.updateProjectionMatrix?.();
+    }
+    renderer.setClearColor(prevColor, prevAlpha);
+    preview.resize?.();
+    preview.render();
+  }
+
+  if (!dataUrl) {
+    throw new Error("Failed to render preview frame.");
+  }
+  return dataUrl;
+}
+
+/** Write a PNG data-URL to an absolute path. Returns the byte length written. */
+export function writePngDataUrl(dataUrl: string, path: string): number {
+  // @ts-ignore - requireNativeModule is a Blockbench global (v5 native API)
+  const fs: any = requireNativeModule("fs");
+  const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+  // @ts-ignore - Buffer is available via the Node bridge
+  const buffer = Buffer.from(base64, "base64");
+  fs.writeFileSync(path, buffer);
+  return buffer.length;
+}
+
+/** Ensure a directory exists (recursive), returning the normalized path. */
+export function ensureDir(dir: string): string {
+  // @ts-ignore - requireNativeModule is a Blockbench global
+  const fs: any = requireNativeModule("fs");
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir.replace(/[\/\\]+$/, "");
+}
+
+/** Join a directory and filename with a forward slash (Blockbench is path-agnostic). */
+export function joinPath(dir: string, name: string): string {
+  return `${dir.replace(/[\/\\]+$/, "")}/${name}`;
+}
+
+interface ContactCell {
+  dataUrl: string;
+  row: number;
+  col: number;
+}
+
+/**
+ * Composite a grid of PNG data-URL cells into one contact-sheet PNG data-URL
+ * using an off-screen 2D canvas. Async because each cell loads through an
+ * <img>. Returns the combined data-URL.
+ */
+export function compositeContactSheet(
+  cells: ContactCell[],
+  cols: number,
+  rows: number,
+  cell: number,
+  background: string = "#000000"
+): Promise<string> {
+  // @ts-ignore - document is available in the Electron renderer
+  const canvas: HTMLCanvasElement = document.createElement("canvas");
+  canvas.width = cols * cell;
+  canvas.height = rows * cell;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return Promise.reject(new Error("2D canvas context unavailable for contact sheet."));
+  }
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  return Promise.all(
+    cells.map(
+      (c) =>
+        new Promise<void>((resolve) => {
+          // @ts-ignore - Image is a renderer global
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, c.col * cell, c.row * cell, cell, cell);
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = c.dataUrl;
+        })
+    )
+  ).then(() => canvas.toDataURL("image/png"));
+}
+
+/**
+ * Convert a rendered (transparent-background) PNG data-URL into a binary
+ * silhouette mask: foreground (alpha > threshold) → white, background → black.
+ * Returns the mask data-URL plus pixel coverage stats. Async (loads via <img>).
+ */
+export function buildSilhouetteMask(
+  dataUrl: string,
+  threshold: number = 8
+): Promise<{ dataUrl: string; foreground: number; total: number }> {
+  return new Promise((resolve, reject) => {
+    // @ts-ignore - Image is a renderer global
+    const img = new Image();
+    img.onerror = () => reject(new Error("Failed to load rendered frame for masking."));
+    img.onload = () => {
+      // @ts-ignore - document is a renderer global
+      const canvas: HTMLCanvasElement = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("2D canvas context unavailable for silhouette mask."));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const px = data.data;
+      let foreground = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const fg = px[i + 3] > threshold;
+        if (fg) foreground++;
+        px[i] = px[i + 1] = px[i + 2] = fg ? 255 : 0;
+        px[i + 3] = 255;
+      }
+      ctx.putImageData(data, 0, 0);
+      resolve({
+        dataUrl: canvas.toDataURL("image/png"),
+        foreground,
+        total: canvas.width * canvas.height,
+      });
+    };
+    img.src = dataUrl;
+  });
+}
+
 /**
  * Captures a screenshot of the entire Blockbench application window.
  * Uses Electron's native capturePage API through Blockbench's Screencam.
