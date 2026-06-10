@@ -1635,15 +1635,42 @@ createTool(
         const readValue = (kf: {
           getArray?: () => number[];
           get?: (axis: string) => number | string;
+          data_points?: Array<Record<string, number | string>>;
         }): number[] => {
           if (typeof kf.getArray === "function") {
             const arr = kf.getArray();
             return arr.map((n) => (typeof n === "number" ? n : Number(n) || 0));
           }
+          const dp = kf.data_points?.[0];
+          if (dp) {
+            return ["x", "y", "z"].map((axis) => {
+              const v = dp[axis];
+              return typeof v === "number" ? v : Number(v) || 0;
+            });
+          }
           return ["x", "y", "z"].map((axis) => {
             const v = kf.get?.(axis);
             return typeof v === "number" ? v : Number(v) || 0;
           });
+        };
+
+        // Blockbench keeps per-channel arrays on live animators, but some
+        // loaded/saved projects only expose the unified `keyframes` list until
+        // the channel views are touched — fall back so pipeline readback works.
+        const channelKeyframes = (
+          animator: {
+            rotation?: any[];
+            position?: any[];
+            scale?: any[];
+            keyframes?: Array<{ channel?: string }>;
+          },
+          channel: string
+        ): any[] => {
+          const direct = animator[channel as "rotation" | "position" | "scale"];
+          if (Array.isArray(direct) && direct.length) return direct;
+          const unified = animator.keyframes;
+          if (!Array.isArray(unified) || !unified.length) return [];
+          return unified.filter((kf) => kf.channel === channel);
         };
 
         const result: Record<string, unknown> = {};
@@ -1653,6 +1680,7 @@ createTool(
             rotation?: any[];
             position?: any[];
             scale?: any[];
+            keyframes?: any[];
             getGroup?: () => { name?: string } | undefined;
           };
           if (!animator) continue;
@@ -1665,8 +1693,8 @@ createTool(
           const boneChannels: Record<string, unknown[]> = {};
           for (const channel of ["rotation", "position", "scale"]) {
             if (!wantedChannels.has(channel)) continue;
-            const kfs = animator[channel as "rotation" | "position" | "scale"];
-            if (!Array.isArray(kfs) || !kfs.length) continue;
+            const kfs = channelKeyframes(animator, channel);
+            if (!kfs.length) continue;
             const entries = kfs
               .filter((kf: { time: number }) => inWindow(kf.time))
               .sort((a: { time: number }, b: { time: number }) => a.time - b.time)

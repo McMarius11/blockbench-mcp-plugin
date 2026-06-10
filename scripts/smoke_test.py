@@ -1152,6 +1152,30 @@ class TestRunner:
             ),
         )
 
+        # #21 regression: pipeline assets are saved as .bbmodel then re-opened.
+        # read_animation_keyframes must still return authored values after reload.
+        bbmodel = os.path.join(self.workdir, "batch2_rk.bbmodel")
+        self.c.call("create_animation", {
+            "name": "Idle", "loop": True, "animation_length": 1.0,
+            "bones": {"RArm": [
+                {"time": 0, "rotation": [12, 8, -22]},
+                {"time": 1, "rotation": [12, 8, -22]},
+            ]},
+        })
+        ok, text = self.c.call("save_project_silent", {"path": bbmodel})
+        self.expect_ok("save batch2_rk.bbmodel for reload regression", ok, text)
+        ok, text = self.c.call("open_project_file", {"path": bbmodel})
+        self.expect_ok("open batch2_rk.bbmodel after save", ok, text)
+        ok, text = self.c.call(
+            "read_animation_keyframes",
+            {"animation_id": "Idle", "bones": ["RArm"], "channels": ["rotation"], "time": 0},
+        )
+        self.expect_ok(
+            "read_animation_keyframes survives bbmodel reload (#21)", ok, text,
+            also_check=lambda t: json.loads(t)["bones"]["RArm"]["rotation"][0]["values"]
+            == [12, 8, -22],
+        )
+
         # #20: validate_rig — limb_pivot passes (cube corner == bone origin),
         # fails on a deliberate far pair; bone_orphans flags childless bone.
         self.c.call("add_group", {"name": "Orphan", "origin": [20, 0, 0], "rotation": [0, 0, 0]})
