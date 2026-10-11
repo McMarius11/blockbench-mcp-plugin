@@ -557,7 +557,7 @@ export default function createNetServer (
     }
   })
 
-  httpServer.listen(port, () => {
+  httpServer.listen(port, '127.0.0.1', () => {
     console.log(`[MCP] Server listening on http://localhost:${port}${endpoint}`)
   })
 

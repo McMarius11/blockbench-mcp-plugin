@@ -335,7 +335,7 @@ export const getElementInfoParameters = z.object({
 export const addGroupParameters = z.object({
   name: z.string(),
   origin: vector3Schema,
-  rotation: vector3Schema,
+  rotation: vector3Schema.optional().default([0, 0, 0]),
   parent: z.string().optional().default("root"),
   visibility: z.boolean().optional().default(true),
   autouv: autoUvEnum

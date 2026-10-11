@@ -610,13 +610,19 @@ createTool(
       // Find or select animation
       const animation = animation_id
         ? Animation.all.find(
-            (a) => a.uuid === animation_id || a.name === animation_id
+            (a) =>
+              a.uuid === animation_id ||
+              a.name === animation_id ||
+              a.name === `animation.${animation_id}`
           )
         : Animation.selected;
 
       if (!animation) {
         throw new Error("No animation found or selected.");
       }
+
+      // createKeyframe() relies on Animation.selected (setLength etc.)
+      if (Animation.selected !== animation) animation.select();
 
       // Find the bone
       const group = findGroupOrThrow(bone_name);
@@ -640,7 +646,10 @@ createTool(
               {
                 time: kf.time,
                 channel,
-                values: kf.values,
+                values:
+                  typeof kf.values === "number"
+                    ? [kf.values, kf.values, kf.values]
+                    : kf.values,
                 interpolation: kf.interpolation,
               },
               kf.time,
@@ -743,7 +752,10 @@ createTool(
     }) {
       const animation = animation_id
         ? Animation.all.find(
-            (a) => a.uuid === animation_id || a.name === animation_id
+            (a) =>
+              a.uuid === animation_id ||
+              a.name === animation_id ||
+              a.name === `animation.${animation_id}`
           )
         : Animation.selected;
 
