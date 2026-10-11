@@ -893,7 +893,7 @@ export function registerWorkflowExtraTools() {
           mesh.addFaces(new MeshFace(mesh, { vertices: verts, uv: faceUv }));
         }
         mesh.addTo(sectionGroup);
-        if (projectTexture) mesh.applyTexture(projectTexture);
+        if (projectTexture) mesh.applyTexture(projectTexture, true);
         return mesh;
       });
 

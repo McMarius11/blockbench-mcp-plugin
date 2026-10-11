@@ -396,9 +396,15 @@ export function registerMeshTools() {
 
       // @ts-expect-error getAllGroups is a utility function that returns all groups in the project
       const groups = getAllGroups();
-      const outlinerGroup = group === "root"
-        ? "root"
-        : groups.find((g: Group) => g.name === group || g.uuid === group) ?? "root";
+      // Prefer a real group named/uuid'd `group` (a bone literally called "root" is common);
+      // only fall back to the outliner root when no such group exists. Unknown names are an error.
+      const found = group
+        ? groups.find((g: Group) => g.name === group || g.uuid === group)
+        : undefined;
+      if (group && !found && group !== "root") {
+        throw new Error(`Group "${group}" not found. Create it with add_group first.`);
+      }
+      const outlinerGroup = found ?? "root";
 
       const meshes = elements.map((element, progress) => {
         const mesh = new Mesh({
@@ -444,7 +450,8 @@ export function registerMeshTools() {
         }
 
         mesh.addTo(outlinerGroup);
-        mesh.applyTexture(projectTexture);
+        // `true` = all faces; without it only *selected* faces get the texture (none here).
+        mesh.applyTexture(projectTexture, true);
 
         reportProgress({
           progress,
@@ -527,9 +534,15 @@ export function registerMeshTools() {
 
       // @ts-expect-error getAllGroups is a utility function that returns all groups in the project
       const groups = getAllGroups();
-      const outlinerGroup = group === "root"
-        ? "root"
-        : groups.find((g: Group) => g.name === group || g.uuid === group) ?? "root";
+      // Prefer a real group named/uuid'd `group` (a bone literally called "root" is common);
+      // only fall back to the outliner root when no such group exists. Unknown names are an error.
+      const found = group
+        ? groups.find((g: Group) => g.name === group || g.uuid === group)
+        : undefined;
+      if (group && !found && group !== "root") {
+        throw new Error(`Group "${group}" not found. Create it with add_group first.`);
+      }
+      const outlinerGroup = found ?? "root";
 
       const spheres = elements.map((element, progress) => {
         const mesh = new Mesh({
@@ -619,7 +632,7 @@ export function registerMeshTools() {
 
         mesh.addTo(outlinerGroup);
         if (projectTexture) {
-          mesh.applyTexture(projectTexture);
+          mesh.applyTexture(projectTexture, true);
         }
 
         reportProgress({
@@ -1120,9 +1133,15 @@ export function registerMeshTools() {
       if (!projectTexture) throw new Error(`Texture "${texture}" not found.`);
       // @ts-expect-error getAllGroups is a utility function that returns all groups in the project
       const groups = getAllGroups();
-      const outlinerGroup = group === "root"
-        ? "root"
-        : groups.find((g: Group) => g.name === group || g.uuid === group) ?? "root";
+      // Prefer a real group named/uuid'd `group` (a bone literally called "root" is common);
+      // only fall back to the outliner root when no such group exists. Unknown names are an error.
+      const found = group
+        ? groups.find((g: Group) => g.name === group || g.uuid === group)
+        : undefined;
+      if (group && !found && group !== "root") {
+        throw new Error(`Group "${group}" not found. Create it with add_group first.`);
+      }
+      const outlinerGroup = found ?? "root";
       const cylinders = elements.map((element, progress) => {
         const mesh = new Mesh({
           name: element.name,
@@ -1181,7 +1200,7 @@ export function registerMeshTools() {
           }
         }
         mesh.addTo(outlinerGroup);
-        if (projectTexture) mesh.applyTexture(projectTexture);
+        if (projectTexture) mesh.applyTexture(projectTexture, true);
         reportProgress({ progress, total });
         return mesh;
       });
