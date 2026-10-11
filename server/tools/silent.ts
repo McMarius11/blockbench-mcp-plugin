@@ -499,7 +499,10 @@ export function registerSilentTools() {
 
         const options: any = {
           embed_textures: !!embed_textures,
-          animations: !!animations,
+          // @ts-ignore - Animation is a Blockbench global
+          animations: animations ? Animation.all : [],
+          // A .glb path must get the binary container, not glTF JSON text.
+          encoding: /\.glb$/i.test(path) ? "binary" : "ascii",
         };
 
         let content =
@@ -516,7 +519,10 @@ export function registerSilentTools() {
           content = await content;
         }
 
-        // GLB is binary (Buffer); GLTF is JSON string
+        // GLB is binary (ArrayBuffer/Buffer); GLTF is JSON string or object
+        if (content instanceof ArrayBuffer) content = Buffer.from(content);
+        else if (typeof content === "object" && !Buffer.isBuffer(content))
+          content = JSON.stringify(content);
         if (Buffer.isBuffer(content)) {
           fs.writeFileSync(path, content);
         } else {
